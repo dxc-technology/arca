@@ -26,7 +26,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::params;
 
 use super::metadata::{row_to_multipart_upload_record, row_to_part_record};
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 /// Parses a stored RFC3339 timestamp, mapping the error into rusqlite's space.
 fn parse_ts(col: usize, s: &str) -> Result<DateTime<Utc>, rusqlite::Error> {
@@ -45,7 +45,7 @@ async fn updated_at_map(
     store
         .read_conn()
         .call(move |conn| {
-            let mut stmt = conn.prepare(sql)?;
+            let mut stmt = conn.prepare_cached(sql)?;
             let rows = stmt.query_map([], |row| {
                 let key: String = row.get(0)?;
                 let ts: String = row.get(1)?;
@@ -133,7 +133,7 @@ impl ControlSnapshotStore for SqliteStore {
             .read_conn()
             .call(move |conn| {
                 let mut stmt =
-                    conn.prepare("SELECT user_id, grant_id, updated_at FROM user_grants")?;
+                    conn.prepare_cached("SELECT user_id, grant_id, updated_at FROM user_grants")?;
                 let user_grants = stmt
                     .query_map([], |row| {
                         Ok(TimestampedUserGrant {
@@ -145,7 +145,7 @@ impl ControlSnapshotStore for SqliteStore {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let mut stmt =
-                    conn.prepare("SELECT team_id, grant_id, updated_at FROM team_grants")?;
+                    conn.prepare_cached("SELECT team_id, grant_id, updated_at FROM team_grants")?;
                 let team_grants = stmt
                     .query_map([], |row| {
                         Ok(TimestampedTeamGrant {
@@ -157,7 +157,7 @@ impl ControlSnapshotStore for SqliteStore {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let mut stmt =
-                    conn.prepare("SELECT team_id, user_id, updated_at FROM team_members")?;
+                    conn.prepare_cached("SELECT team_id, user_id, updated_at FROM team_members")?;
                 let team_members = stmt
                     .query_map([], |row| {
                         Ok(TimestampedTeamMember {
@@ -168,7 +168,7 @@ impl ControlSnapshotStore for SqliteStore {
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
 
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT bucket, config_key, config_value, updated_at FROM bucket_config",
                 )?;
                 let bucket_configs = stmt
@@ -184,7 +184,7 @@ impl ControlSnapshotStore for SqliteStore {
 
                 // One set-level entity per bucket: rows grouped, timestamp =
                 // MAX(updated_at) (equal across the set by construction).
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT bucket, tag_key, tag_value, updated_at FROM bucket_tags ORDER BY bucket, tag_key",
                 )?;
                 let tag_rows = stmt
@@ -213,7 +213,7 @@ impl ControlSnapshotStore for SqliteStore {
                 }
 
                 let mut stmt = conn
-                    .prepare("SELECT config_key, config_value, updated_at FROM server_config")?;
+                    .prepare_cached("SELECT config_key, config_value, updated_at FROM server_config")?;
                 let server_configs = stmt
                     .query_map([], |row| {
                         Ok(TimestampedServerConfig {
@@ -229,14 +229,14 @@ impl ControlSnapshotStore for SqliteStore {
                     })
                     .collect::<Vec<_>>();
 
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type FROM multipart_uploads",
                 )?;
                 let multipart_uploads = stmt
                     .query_map([], |row| row_to_multipart_upload_record(row))?
                     .collect::<Result<Vec<MultipartUploadRecord>, _>>()?;
 
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified FROM parts",
                 )?;
                 let parts = stmt
@@ -284,7 +284,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(access_key_id) DO UPDATE SET
@@ -319,7 +319,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(user_id) DO UPDATE SET
@@ -352,7 +352,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO teams (team_id, name, description, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)
                      ON CONFLICT(team_id) DO UPDATE SET
@@ -385,7 +385,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO user_grants (user_id, grant_id, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(user_id, grant_id) DO UPDATE SET updated_at = excluded.updated_at",
                     params![uid, gid, ts],
@@ -407,7 +407,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO team_grants (team_id, grant_id, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(team_id, grant_id) DO UPDATE SET updated_at = excluded.updated_at",
                     params![tid, gid, ts],
@@ -429,7 +429,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO team_members (team_id, user_id, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(team_id, user_id) DO UPDATE SET updated_at = excluded.updated_at",
                     params![tid, uid, ts],
@@ -451,7 +451,7 @@ impl ControlSnapshotStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO server_config (config_key, config_value, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(config_key) DO UPDATE SET config_value = ?2, updated_at = ?3",
                     params![key, value, ts],

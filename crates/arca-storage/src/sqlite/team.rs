@@ -6,7 +6,7 @@ use arca_core::types::{Team, User};
 use chrono::DateTime;
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl TeamStore for SqliteStore {
@@ -14,7 +14,7 @@ impl TeamStore for SqliteStore {
         let t = team.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO teams (team_id, name, description, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                     params![
@@ -35,7 +35,7 @@ impl TeamStore for SqliteStore {
         let id = team_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT team_id, name, description, created_at
                      FROM teams WHERE team_id = ?1",
                 )?;
@@ -53,7 +53,7 @@ impl TeamStore for SqliteStore {
     async fn list_teams(&self) -> Result<Vec<Team>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT team_id, name, description, created_at
                      FROM teams ORDER BY created_at",
                 )?;
@@ -90,7 +90,7 @@ impl TeamStore for SqliteStore {
                     values.push(Box::new(d.clone()));
                 }
                 if sets.is_empty() {
-                    let exists: bool = conn.query_row(
+                    let exists: bool = conn.query_row_cached(
                         "SELECT 1 FROM teams WHERE team_id = ?1",
                         params![id],
                         |_| Ok(true),
@@ -106,7 +106,7 @@ impl TeamStore for SqliteStore {
                 );
                 values.push(Box::new(id));
                 let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-                let affected = conn.execute(&sql, params.as_slice())?;
+                let affected = conn.execute_cached(&sql, params.as_slice())?;
                 Ok(affected > 0)
             })
             .await
@@ -118,15 +118,15 @@ impl TeamStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM team_members WHERE team_id = ?1",
                     params![id],
                 )?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM team_grants WHERE team_id = ?1",
                     params![id],
                 )?;
-                let affected = tx.execute(
+                let affected = tx.execute_cached(
                     "DELETE FROM teams WHERE team_id = ?1",
                     params![id],
                 )?;
@@ -145,7 +145,7 @@ impl TeamStore for SqliteStore {
                 // updated_at refreshed on an idempotent re-add too: the LWW
                 // reconcile must see it as newer than any concurrent
                 // remove-member tombstone.
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO team_members (team_id, user_id, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(team_id, user_id) DO UPDATE SET updated_at = excluded.updated_at",
                     params![tid, uid, chrono::Utc::now().to_rfc3339()],
@@ -161,7 +161,7 @@ impl TeamStore for SqliteStore {
         let uid = user_id.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM team_members WHERE team_id = ?1 AND user_id = ?2",
                     params![tid, uid],
                 )?;
@@ -175,7 +175,7 @@ impl TeamStore for SqliteStore {
         let tid = team_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT u.user_id, u.username, u.description, u.is_root, u.created_at
                      FROM users u
                      JOIN team_members tm ON tm.user_id = u.user_id
@@ -199,7 +199,7 @@ impl TeamStore for SqliteStore {
         let uid = user_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT t.team_id, t.name, t.description, t.created_at
                      FROM teams t
                      JOIN team_members tm ON tm.team_id = t.team_id
@@ -221,7 +221,7 @@ impl TeamStore for SqliteStore {
         let t = team.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO teams (team_id, name, description, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)
                      ON CONFLICT(team_id) DO UPDATE SET

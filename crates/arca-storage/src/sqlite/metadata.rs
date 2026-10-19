@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use chrono::DateTime;
 use rusqlite::{params, Connection};
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 /// Error type for the CAS-checked write closures (`put_object_if`,
 /// `delete_object_if`, `delete_object_version_if`): distinguishes a refused
@@ -52,7 +52,7 @@ fn map_cas_result<T>(
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a synchronous `rusqlite::Connection` context.
 fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
-    match conn.query_row(
+    match conn.query_row_cached(
         "SELECT config_value FROM bucket_config WHERE bucket = ?1 AND config_key = 'versioning'",
         params![bucket],
         |row| row.get::<_, String>(0),
@@ -85,7 +85,7 @@ fn take_upload(
     upload_id: &str,
 ) -> Result<Vec<PartRecord>, rusqlite::Error> {
     let parts = {
-        let mut stmt = tx.prepare(
+        let mut stmt = tx.prepare_cached(
             "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
              FROM parts WHERE upload_id = ?1",
         )?;
@@ -96,8 +96,8 @@ fn take_upload(
         }
         parts
     };
-    tx.execute("DELETE FROM parts WHERE upload_id = ?1", params![upload_id])?;
-    tx.execute(
+    tx.execute_cached("DELETE FROM parts WHERE upload_id = ?1", params![upload_id])?;
+    tx.execute_cached(
         "DELETE FROM multipart_uploads WHERE upload_id = ?1",
         params![upload_id],
     )?;
@@ -134,12 +134,12 @@ fn install_object(
         VersioningState::Unversioned => {
             // Same as before: find old, DELETE + INSERT.
             let old = fetch_latest_object(tx, &record.bucket, &record.key)?;
-            tx.execute(
+            tx.execute_cached(
                 "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
                 params![record.bucket, record.key],
             )?;
             // Clean up tags from overwritten object
-            tx.execute(
+            tx.execute_cached(
                 "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
                 params![record.bucket, record.key],
             )?;
@@ -155,7 +155,7 @@ fn install_object(
         }
         VersioningState::Enabled => {
             // Mark current latest as not-latest.
-            tx.execute(
+            tx.execute_cached(
                 "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
                 params![record.bucket, record.key],
             )?;
@@ -171,17 +171,17 @@ fn install_object(
         VersioningState::Suspended => {
             // Delete existing null-version (if any) for cleanup.
             let old_null = fetch_null_version(tx, &record.bucket, &record.key)?;
-            tx.execute(
+            tx.execute_cached(
                 "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
                 params![record.bucket, record.key],
             )?;
             // Clean up tags from old null-version
-            tx.execute(
+            tx.execute_cached(
                 "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
                 params![record.bucket, record.key],
             )?;
             // Mark any remaining latest as not-latest.
-            tx.execute(
+            tx.execute_cached(
                 "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
                 params![record.bucket, record.key],
             )?;
@@ -204,7 +204,7 @@ impl MetadataStore for SqliteStore {
     async fn get_stats(&self) -> Result<StorageStats, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let stats = conn.query_row(
+                let stats = conn.query_row_cached(
                     "SELECT
                         (SELECT COUNT(*) FROM buckets),
                         (SELECT COUNT(*) FROM objects WHERE is_latest = 1 AND is_delete_marker = 0),
@@ -229,7 +229,7 @@ impl MetadataStore for SqliteStore {
     async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT name, created_at, owner FROM buckets ORDER BY name",
                 )?;
                 let rows = stmt.query_map([], |row| Ok(row_to_bucket_info(row)))?;
@@ -249,7 +249,7 @@ impl MetadataStore for SqliteStore {
         let name_for_err = name.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO buckets (name, created_at, owner) VALUES (?1, ?2, ?3)",
                     params![name, chrono::Utc::now().to_rfc3339(), owner],
                 )?;
@@ -273,7 +273,7 @@ impl MetadataStore for SqliteStore {
         let name = name.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT name, created_at, owner FROM buckets WHERE name = ?1",
                 )?;
                 let result = stmt.query_row(params![name], |row| Ok(row_to_bucket_info(row)));
@@ -292,10 +292,10 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 // Clean up tags associated with this bucket
-                conn.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![name])?;
-                conn.execute("DELETE FROM object_tags WHERE bucket = ?1", params![name])?;
+                conn.execute_cached("DELETE FROM bucket_tags WHERE bucket = ?1", params![name])?;
+                conn.execute_cached("DELETE FROM object_tags WHERE bucket = ?1", params![name])?;
                 let affected =
-                    conn.execute("DELETE FROM buckets WHERE name = ?1", params![name])?;
+                    conn.execute_cached("DELETE FROM buckets WHERE name = ?1", params![name])?;
                 Ok(affected > 0)
             })
             .await
@@ -307,7 +307,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 // EXISTS stops at the first row; COUNT(*) would read them all.
-                let any: bool = conn.query_row(
+                let any: bool = conn.query_row_cached(
                     "SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = ?1)",
                     params![name],
                     |row| row.get(0),
@@ -352,7 +352,7 @@ impl MetadataStore for SqliteStore {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1 AND is_delete_marker = 0"
                 );
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let result = stmt.query_row(
                     params![bucket, key],
                     |row| Ok(row_to_object_record(row)),
@@ -379,7 +379,7 @@ impl MetadataStore for SqliteStore {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1"
                 );
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let result = stmt.query_row(
                     params![bucket, key],
                     |row| Ok(row_to_object_record(row)),
@@ -425,9 +425,6 @@ impl MetadataStore for SqliteStore {
                 }
 
                 sql.push_str(" ORDER BY key");
-                sql.push_str(&format!(" LIMIT {max_keys}"));
-
-                let mut stmt = conn.prepare(&sql)?;
 
                 // Bind parameters dynamically.
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -438,6 +435,9 @@ impl MetadataStore for SqliteStore {
                 if let Some(ref sa) = start_after {
                     params_vec.push(Box::new(sa.clone()));
                 }
+                push_limit(&mut sql, &mut params_vec, max_keys);
+
+                let mut stmt = conn.prepare_cached(&sql)?;
 
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
@@ -498,20 +498,20 @@ impl MetadataStore for SqliteStore {
                             // remove the row outright.
                             if cluster_mode {
                                 let seq = next_object_seq(&tx)?;
-                                tx.execute(
+                                tx.execute_cached(
                                     "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
                                      blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
                                      WHERE bucket = ?1 AND key = ?2",
                                     params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
                                 )?;
                             } else {
-                                tx.execute(
+                                tx.execute_cached(
                                     "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
                                     params![bucket, key],
                                 )?;
                             }
                             // Clean up tags either way.
-                            tx.execute(
+                            tx.execute_cached(
                                 "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
                                 params![bucket, key],
                             )?;
@@ -524,7 +524,7 @@ impl MetadataStore for SqliteStore {
                     }
                     VersioningState::Enabled => {
                         // Mark current latest as not-latest.
-                        tx.execute(
+                        tx.execute_cached(
                             "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
                             params![bucket, key],
                         )?;
@@ -532,7 +532,7 @@ impl MetadataStore for SqliteStore {
                         let version_id = uuid::Uuid::new_v4().to_string();
                         let now = chrono::Utc::now();
                         let seq = next_object_seq(&tx)?;
-                        tx.execute(
+                        tx.execute_cached(
                             "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
                              VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?6, ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5, 0)",
                             params![bucket, key, now.to_rfc3339(), version_id, seq, marker_owner],
@@ -570,24 +570,24 @@ impl MetadataStore for SqliteStore {
                     VersioningState::Suspended => {
                         // Delete existing null-version for cleanup.
                         let old_null = fetch_null_version(&tx, &bucket, &key)?;
-                        tx.execute(
+                        tx.execute_cached(
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
                             params![bucket, key],
                         )?;
                         // Clean up tags from old null-version
-                        tx.execute(
+                        tx.execute_cached(
                             "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
                             params![bucket, key],
                         )?;
                         // Mark any remaining latest as not-latest.
-                        tx.execute(
+                        tx.execute_cached(
                             "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
                             params![bucket, key],
                         )?;
                         // Insert delete marker with NULL version_id.
                         let now = chrono::Utc::now();
                         let seq = next_object_seq(&tx)?;
-                        tx.execute(
+                        tx.execute_cached(
                             "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
                              VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?5, NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4, 0)",
                             params![bucket, key, now.to_rfc3339(), seq, marker_owner],
@@ -617,7 +617,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 // `IS` matches the null version (no version id) as well as a named one.
-                let stored = conn.query_row(
+                let stored = conn.query_row_cached(
                     "SELECT parts FROM objects \
                      WHERE bucket = ?1 AND key = ?2 AND version_id IS ?3 AND is_tombstone = 0",
                     params![bucket, key, version_id],
@@ -649,7 +649,7 @@ impl MetadataStore for SqliteStore {
                 } else {
                     format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0")
                 };
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let result = if version_id == "null" {
                     stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)))
                 } else {
@@ -692,7 +692,7 @@ impl MetadataStore for SqliteStore {
                     } else {
                         format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0")
                     };
-                    let mut stmt = tx.prepare(&sql)?;
+                    let mut stmt = tx.prepare_cached(&sql)?;
                     let result = if version_id == "null" {
                         stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)))
                     } else {
@@ -730,14 +730,14 @@ impl MetadataStore for SqliteStore {
                     if cluster_mode {
                         let seq = next_object_seq(&tx)?;
                         if version_id == "null" {
-                            tx.execute(
+                            tx.execute_cached(
                                 "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
                                  blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
                                  WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
                                 params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
                             )?;
                         } else {
-                            tx.execute(
+                            tx.execute_cached(
                                 "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
                                  blob_id = '', size = 0, last_modified = ?4, seq = ?5 \
                                  WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
@@ -745,12 +745,12 @@ impl MetadataStore for SqliteStore {
                             )?;
                         }
                     } else if version_id == "null" {
-                        tx.execute(
+                        tx.execute_cached(
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
                             params![bucket, key],
                         )?;
                     } else {
-                        tx.execute(
+                        tx.execute_cached(
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                             params![bucket, key, version_id],
                         )?;
@@ -758,7 +758,7 @@ impl MetadataStore for SqliteStore {
 
                     // Clean up tags for this version.
                     let tag_vid = if version_id == "null" { String::new() } else { version_id.clone() };
-                    tx.execute(
+                    tx.execute_cached(
                         "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                         params![bucket, key, tag_vid],
                     )?;
@@ -805,7 +805,7 @@ impl MetadataStore for SqliteStore {
                 };
 
                 let existing: Option<ObjectRecord> = match &record.version_id {
-                    Some(vid) => match tx.query_row(
+                    Some(vid) => match tx.query_row_cached(
                         &select_sql,
                         params![record.bucket, record.key, vid],
                         |row| Ok(row_to_object_record(row)),
@@ -814,7 +814,7 @@ impl MetadataStore for SqliteStore {
                         Err(rusqlite::Error::QueryReturnedNoRows) => None,
                         Err(e) => return Err(e.into()),
                     },
-                    None => match tx.query_row(
+                    None => match tx.query_row_cached(
                         &select_sql,
                         params![record.bucket, record.key],
                         |row| Ok(row_to_object_record(row)),
@@ -834,8 +834,8 @@ impl MetadataStore for SqliteStore {
                     let metadata_json =
                         serde_json::to_string(&row.metadata).unwrap_or_else(|_| "{}".to_string());
                     match &record.version_id {
-                        Some(vid) => tx.execute(delete_sql, params![record.bucket, record.key, vid])?,
-                        None => tx.execute(delete_sql, params![record.bucket, record.key])?,
+                        Some(vid) => tx.execute_cached(delete_sql, params![record.bucket, record.key, vid])?,
+                        None => tx.execute_cached(delete_sql, params![record.bucket, record.key])?,
                     };
                     insert_replicated_row(&tx, &row, &metadata_json)?;
                 }
@@ -869,24 +869,24 @@ impl MetadataStore for SqliteStore {
                 let seq = next_object_seq(&tx)?;
                 let now = chrono::Utc::now().to_rfc3339();
                 if version_id == "null" {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, blob_id = '', \
                          size = 0, last_modified = ?3, seq = ?4 \
                          WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0",
                         params![bucket, key, now, seq],
                     )?;
-                    tx.execute(
+                    tx.execute_cached(
                         "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
                         params![bucket, key],
                     )?;
                 } else {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, blob_id = '', \
                          size = 0, last_modified = ?4, seq = ?5 \
                          WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0",
                         params![bucket, key, version_id, now, seq],
                     )?;
-                    tx.execute(
+                    tx.execute_cached(
                         "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                         params![bucket, key, version_id],
                     )?;
@@ -909,7 +909,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 // ON CONFLICT DO UPDATE (not INSERT OR REPLACE) so we never
                 // delete-and-reinsert the row, which could cascade to dependents.
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO buckets (name, created_at, owner) VALUES (?1, ?2, ?3) \
                      ON CONFLICT(name) DO UPDATE SET created_at = excluded.created_at, owner = excluded.owner",
                     params![name, created_at, owner],
@@ -931,7 +931,7 @@ impl MetadataStore for SqliteStore {
                     serde_json::to_string(&record.metadata).unwrap_or_else(|_| "{}".to_string());
                 // A multipart upload is immutable once created (upload_id is the
                 // key), so a re-delivered op is a no-op rather than an error.
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                      ON CONFLICT(upload_id) DO NOTHING",
@@ -970,7 +970,7 @@ impl MetadataStore for SqliteStore {
                      WHERE seq > ?1 ORDER BY seq ASC LIMIT ?2"
                 );
                 let seq_idx = OBJECT_COLUMNS_FULL.split(',').count();
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let rows = stmt.query_map(params![since as i64, limit], |row| {
                     let record = row_to_object_record(row)?;
                     let seq: i64 = row.get(seq_idx)?;
@@ -993,7 +993,7 @@ impl MetadataStore for SqliteStore {
         let before_str = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let n = conn.execute(
+                let n = conn.execute_cached(
                     "DELETE FROM objects WHERE is_tombstone = 1 AND last_modified < ?1",
                     params![before_str],
                 )?;
@@ -1008,7 +1008,7 @@ impl MetadataStore for SqliteStore {
         // maximum go backwards, which would false-alarm cursor rewind detection.
         self.read_conn()
             .call(move |conn| {
-                let v: i64 = conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))?;
+                let v: i64 = conn.query_row_cached("SELECT value FROM object_seq", [], |row| row.get(0))?;
                 Ok(v as u64)
             })
             .await
@@ -1024,14 +1024,14 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let max_seq: i64 = conn
-                    .query_row("SELECT COALESCE(MAX(seq), 0) FROM objects", [], |row| {
+                    .query_row_cached("SELECT COALESCE(MAX(seq), 0) FROM objects", [], |row| {
                         row.get(0)
                     })?;
-                conn.execute(
+                conn.execute_cached(
                     "UPDATE object_seq SET value = ?1 WHERE value < ?1",
                     params![max_seq],
                 )?;
-                let v: i64 = conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))?;
+                let v: i64 = conn.query_row_cached("SELECT value FROM object_seq", [], |row| row.get(0))?;
                 Ok(v as u64)
             })
             .await
@@ -1041,7 +1041,7 @@ impl MetadataStore for SqliteStore {
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT blob_id FROM objects WHERE is_tombstone = 0 AND blob_id != ''
                      UNION
                      SELECT blob_id FROM parts",
@@ -1105,9 +1105,9 @@ impl MetadataStore for SqliteStore {
                 // boundary between two versions sharing a timestamp neither
                 // skips nor repeats one.
                 sql.push_str(" ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC");
-                sql.push_str(&format!(" LIMIT {max_keys}"));
+                push_limit(&mut sql, &mut params_vec, max_keys);
 
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
 
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
@@ -1137,7 +1137,7 @@ impl MetadataStore for SqliteStore {
         let config_key = config_key.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT config_value FROM bucket_config WHERE bucket = ?1 AND config_key = ?2",
                 )?;
                 let result = stmt.query_row(params![bucket, config_key], |row| row.get(0));
@@ -1162,7 +1162,7 @@ impl MetadataStore for SqliteStore {
         let config_value = config_value.to_string();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO bucket_config (bucket, config_key, config_value, updated_at)
                      VALUES (?1, ?2, ?3, ?4)
                      ON CONFLICT(bucket, config_key) DO UPDATE SET config_value = ?3, updated_at = ?4",
@@ -1183,7 +1183,7 @@ impl MetadataStore for SqliteStore {
         let config_key = config_key.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM bucket_config WHERE bucket = ?1 AND config_key = ?2",
                     params![bucket, config_key],
                 )?;
@@ -1208,7 +1208,7 @@ impl MetadataStore for SqliteStore {
         let ts = updated_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO bucket_config (bucket, config_key, config_value, updated_at)
                      VALUES (?1, ?2, ?3, ?4)
                      ON CONFLICT(bucket, config_key) DO UPDATE SET config_value = ?3, updated_at = ?4",
@@ -1233,9 +1233,9 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
+                tx.execute_cached("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
                 for (k, v) in &tags {
-                    tx.execute(
+                    tx.execute_cached(
                         "INSERT INTO bucket_tags (bucket, tag_key, tag_value, updated_at) VALUES (?1, ?2, ?3, ?4)",
                         params![bucket, k, v, ts],
                     )?;
@@ -1256,7 +1256,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT tag_key, tag_value FROM bucket_tags WHERE bucket = ?1 ORDER BY tag_key",
                 )?;
                 let tags = stmt
@@ -1280,13 +1280,13 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
+                tx.execute_cached("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
                 // One timestamp for the whole set: the control reconcile
                 // treats a bucket's tags as a single LWW entity (replace-all
                 // semantics), keyed by MAX(updated_at) — equal here by design.
                 let now = chrono::Utc::now().to_rfc3339();
                 for (k, v) in &tags {
-                    tx.execute(
+                    tx.execute_cached(
                         "INSERT INTO bucket_tags (bucket, tag_key, tag_value, updated_at) VALUES (?1, ?2, ?3, ?4)",
                         params![bucket, k, v, now],
                     )?;
@@ -1305,7 +1305,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM bucket_tags WHERE bucket = ?1",
                     params![bucket],
                 )?;
@@ -1326,7 +1326,7 @@ impl MetadataStore for SqliteStore {
         let version_id = version_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT tag_key, tag_value FROM object_tags
                      WHERE bucket = ?1 AND key = ?2 AND version_id = ?3
                      ORDER BY tag_key",
@@ -1356,12 +1356,12 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                     params![bucket, key, version_id],
                 )?;
                 for (k, v) in &tags {
-                    tx.execute(
+                    tx.execute_cached(
                         "INSERT INTO object_tags (bucket, key, version_id, tag_key, tag_value)
                          VALUES (?1, ?2, ?3, ?4, ?5)",
                         params![bucket, key, version_id, k, v],
@@ -1385,7 +1385,7 @@ impl MetadataStore for SqliteStore {
         let version_id = version_id.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                     params![bucket, key, version_id],
                 )?;
@@ -1406,7 +1406,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 let metadata_json = serde_json::to_string(&record.metadata)
                     .unwrap_or_else(|_| "{}".to_string());
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
@@ -1434,7 +1434,7 @@ impl MetadataStore for SqliteStore {
         let upload_id = upload_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type
                      FROM multipart_uploads WHERE upload_id = ?1",
                 )?;
@@ -1459,7 +1459,7 @@ impl MetadataStore for SqliteStore {
 
                 // Check for existing part to return for cleanup.
                 let old = {
-                    let mut stmt = tx.prepare(
+                    let mut stmt = tx.prepare_cached(
                         "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
                          FROM parts WHERE upload_id = ?1 AND part_number = ?2",
                     )?;
@@ -1475,12 +1475,12 @@ impl MetadataStore for SqliteStore {
                 };
 
                 // Delete old part if exists, then insert new.
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM parts WHERE upload_id = ?1 AND part_number = ?2",
                     params![part.upload_id, part.part_number],
                 )?;
                 let last_modified_str = part.last_modified.map(|dt| dt.to_rfc3339());
-                tx.execute(
+                tx.execute_cached(
                     "INSERT INTO parts (upload_id, part_number, blob_id, size, etag, checksum_value, last_modified)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
@@ -1505,7 +1505,7 @@ impl MetadataStore for SqliteStore {
         let upload_id = upload_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
                      FROM parts WHERE upload_id = ?1 ORDER BY part_number",
                 )?;
@@ -1541,7 +1541,7 @@ impl MetadataStore for SqliteStore {
                 // deleted its parts, and an object installed now would point
                 // at them. All writes go through this one connection, so the
                 // check and the commit below cannot interleave with an abort.
-                let exists: bool = tx.query_row(
+                let exists: bool = tx.query_row_cached(
                     "SELECT EXISTS(SELECT 1 FROM multipart_uploads WHERE upload_id = ?1)",
                     params![upload_id],
                     |row| row.get(0),
@@ -1632,9 +1632,6 @@ impl MetadataStore for SqliteStore {
                 }
 
                 sql.push_str(" ORDER BY key, upload_id");
-                sql.push_str(&format!(" LIMIT {max_uploads}"));
-
-                let mut stmt = conn.prepare(&sql)?;
 
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
                 params_vec.push(Box::new(bucket));
@@ -1653,6 +1650,9 @@ impl MetadataStore for SqliteStore {
                         params_vec.push(Box::new(km.clone()));
                     }
                 }
+                push_limit(&mut sql, &mut params_vec, max_uploads);
+
+                let mut stmt = conn.prepare_cached(&sql)?;
 
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
@@ -1697,13 +1697,13 @@ impl MetadataStore for SqliteStore {
                 let seq = next_object_seq(&tx)?;
                 let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3, lock_updated_at = ?4 \
                          WHERE bucket = ?5 AND key = ?6 AND version_id = ?7",
                         params![retention_mode, retain_until_date, seq, lock_updated_at, bucket, key, vid],
                     )?
                 } else {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3, lock_updated_at = ?4 \
                          WHERE bucket = ?5 AND key = ?6 AND is_latest = 1",
                         params![retention_mode, retain_until_date, seq, lock_updated_at, bucket, key],
@@ -1736,13 +1736,13 @@ impl MetadataStore for SqliteStore {
                 let seq = next_object_seq(&tx)?;
                 let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET legal_hold_status = ?1, seq = ?2, lock_updated_at = ?3 \
                          WHERE bucket = ?4 AND key = ?5 AND version_id = ?6",
                         params![status, seq, lock_updated_at, bucket, key, vid],
                     )?
                 } else {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET legal_hold_status = ?1, seq = ?2, lock_updated_at = ?3 \
                          WHERE bucket = ?4 AND key = ?5 AND is_latest = 1",
                         params![status, seq, lock_updated_at, bucket, key],
@@ -1787,13 +1787,13 @@ impl MetadataStore for SqliteStore {
                 let seq = next_object_seq(&tx)?;
                 let content_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3, content_updated_at = ?4 \
                          WHERE bucket = ?5 AND key = ?6 AND version_id = ?7",
                         params![algorithm, key_id, seq, content_updated_at, bucket, key, vid],
                     )?
                 } else {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3, content_updated_at = ?4 \
                          WHERE bucket = ?5 AND key = ?6 AND is_latest = 1",
                         params![algorithm, key_id, seq, content_updated_at, bucket, key],
@@ -1836,13 +1836,13 @@ impl MetadataStore for SqliteStore {
                 let seq = next_object_seq(&tx)?;
                 let content_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4, content_updated_at = ?5 \
                          WHERE bucket = ?6 AND key = ?7 AND version_id = ?8 AND blob_id = ?9",
                         params![new_blob_id, algorithm, key_id, seq, content_updated_at, bucket, key, vid, old_blob_id],
                     )?
                 } else {
-                    tx.execute(
+                    tx.execute_cached(
                         "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4, content_updated_at = ?5 \
                          WHERE bucket = ?6 AND key = ?7 AND is_latest = 1 AND blob_id = ?8",
                         params![new_blob_id, algorithm, key_id, seq, content_updated_at, bucket, key, old_blob_id],
@@ -1908,9 +1908,7 @@ impl MetadataStore for SqliteStore {
                     tag_indices.push((key_idx, val_idx));
                 }
 
-                sql.push_str(&format!(" ORDER BY key LIMIT {max_keys}"));
-
-                let mut stmt = conn.prepare(&sql)?;
+                sql.push_str(" ORDER BY key");
 
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
                 params_vec.push(Box::new(bucket));
@@ -1926,6 +1924,9 @@ impl MetadataStore for SqliteStore {
                     params_vec.push(Box::new(key.clone()));
                     params_vec.push(Box::new(value.clone()));
                 }
+                push_limit(&mut sql, &mut params_vec, max_keys);
+
+                let mut stmt = conn.prepare_cached(&sql)?;
 
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
@@ -2019,9 +2020,7 @@ impl MetadataStore for SqliteStore {
                          AND object_tags.tag_value = ?{val})"
                     ));
                 }
-                sql.push_str(&format!(
-                    " ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC LIMIT {max_keys}"
-                ));
+                sql.push_str(" ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC");
 
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(bucket)];
                 for value in prefix_params {
@@ -2040,8 +2039,9 @@ impl MetadataStore for SqliteStore {
                     params_vec.push(Box::new(k));
                     params_vec.push(Box::new(v));
                 }
+                push_limit(&mut sql, &mut params_vec, max_keys);
 
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
                 let rows = stmt.query_map(params_refs.as_slice(), |row| {
@@ -2086,7 +2086,7 @@ impl MetadataStore for SqliteStore {
                     let (k, u) = (param_idx, param_idx + 1);
                     sql.push_str(&format!(" AND (key > ?{k} OR (key = ?{k} AND upload_id > ?{u}))"));
                 }
-                sql.push_str(&format!(" ORDER BY key, upload_id LIMIT {max_uploads}"));
+                sql.push_str(" ORDER BY key, upload_id");
 
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> =
                     vec![Box::new(bucket), Box::new(cutoff_str)];
@@ -2097,8 +2097,9 @@ impl MetadataStore for SqliteStore {
                     params_vec.push(Box::new(key));
                     params_vec.push(Box::new(id));
                 }
+                push_limit(&mut sql, &mut params_vec, max_uploads);
 
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
                 let rows = stmt.query_map(params_refs.as_slice(), |row| {
@@ -2126,7 +2127,7 @@ fn fetch_latest_object(
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1"
     );
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare_cached(&sql)?;
     let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
     match result {
         Ok(rec) => Ok(Some(rec?)),
@@ -2147,7 +2148,7 @@ fn fetch_current_object(
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1 AND is_delete_marker = 0"
     );
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare_cached(&sql)?;
     let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
     match result {
         Ok(rec) => Ok(Some(rec?)),
@@ -2166,7 +2167,7 @@ fn fetch_null_version(
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0"
     );
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare_cached(&sql)?;
     let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
     match result {
         Ok(rec) => Ok(Some(rec?)),
@@ -2186,8 +2187,8 @@ fn fetch_null_version(
 /// without locking because the tokio-rusqlite connection serializes all writes
 /// on one thread; the caller runs this inside its transaction.
 fn next_object_seq(conn: &Connection) -> Result<i64, rusqlite::Error> {
-    conn.execute("UPDATE object_seq SET value = value + 1", [])?;
-    conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))
+    conn.execute_cached("UPDATE object_seq SET value = value + 1", [])?;
+    conn.query_row_cached("SELECT value FROM object_seq", [], |row| row.get(0))
 }
 
 /// Inserts a new object row into the `objects` table.
@@ -2201,7 +2202,7 @@ fn insert_object_row(
     let content_updated_str = record.content_updated_at.map(|dt| dt.to_rfc3339());
     let parts_json = parts_to_json(record);
     let seq = next_object_seq(conn)?;
-    conn.execute(
+    conn.execute_cached(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone, lock_updated_at, content_updated_at, parts)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
@@ -2256,11 +2257,11 @@ fn parts_to_json(record: &ObjectRecord) -> Option<String> {
 /// the latest version thus promotes the next live version; deleting the only
 /// version leaves no `is_latest` row (the key reads as absent).
 fn recompute_is_latest(conn: &Connection, bucket: &str, key: &str) -> Result<(), rusqlite::Error> {
-    conn.execute(
+    conn.execute_cached(
         "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2",
         params![bucket, key],
     )?;
-    conn.execute(
+    conn.execute_cached(
         "UPDATE objects SET is_latest = 1 WHERE rowid = (
             SELECT rowid FROM objects WHERE bucket = ?1 AND key = ?2 AND is_tombstone = 0
             ORDER BY last_modified DESC, version_id DESC, blob_id DESC
@@ -2284,7 +2285,7 @@ fn insert_replicated_row(
     let content_updated_str = record.content_updated_at.map(|dt| dt.to_rfc3339());
     let parts_json = parts_to_json(record);
     let seq = next_object_seq(conn)?;
-    conn.execute(
+    conn.execute_cached(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone, lock_updated_at, content_updated_at, parts)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
@@ -2316,6 +2317,15 @@ fn insert_replicated_row(
         ],
     )?;
     Ok(())
+}
+
+/// Appends ` LIMIT ?N` to `sql`, binding `limit` as the last parameter.
+///
+/// Bound rather than written into the text, so a listing's SQL stays the same
+/// whatever page size the client asks for and its prepared statement is reused.
+fn push_limit(sql: &mut String, params: &mut Vec<Box<dyn rusqlite::types::ToSql>>, limit: u32) {
+    params.push(Box::new(limit));
+    sql.push_str(&format!(" LIMIT ?{}", params.len()));
 }
 
 /// Appends the filter selecting the keys that start with `prefix` to `sql`,
@@ -2536,6 +2546,26 @@ mod tests {
 
     async fn test_store() -> SqliteStore {
         SqliteStore::open_in_memory().await.unwrap()
+    }
+
+    #[test]
+    fn push_limit_binds_the_limit_as_the_next_parameter() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (v INTEGER); INSERT INTO t VALUES (1), (2), (3), (4);")
+            .unwrap();
+        let mut sql = String::from("SELECT v FROM t WHERE v >= ?1 ORDER BY v");
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(2)];
+        push_limit(&mut sql, &mut params, 2);
+
+        assert_eq!(sql, "SELECT v FROM t WHERE v >= ?1 ORDER BY v LIMIT ?2");
+        let refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let got: Vec<i64> = stmt
+            .query_map(refs.as_slice(), |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(got, vec![2, 3]);
     }
 
     fn make_record(bucket: &str, key: &str) -> ObjectRecord {

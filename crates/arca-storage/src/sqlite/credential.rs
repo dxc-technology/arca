@@ -6,7 +6,7 @@ use arca_core::types::Credential;
 use chrono::DateTime;
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl CredentialStore for SqliteStore {
@@ -14,7 +14,7 @@ impl CredentialStore for SqliteStore {
         let cred = credential.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
@@ -40,7 +40,7 @@ impl CredentialStore for SqliteStore {
         let key = access_key_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT access_key_id, secret_access_key, description, created_at, active, user_id
                      FROM credentials WHERE access_key_id = ?1",
                 )?;
@@ -60,7 +60,7 @@ impl CredentialStore for SqliteStore {
     async fn list_credentials(&self) -> Result<Vec<Credential>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT access_key_id, secret_access_key, description, created_at, active, user_id
                      FROM credentials ORDER BY created_at",
                 )?;
@@ -79,7 +79,7 @@ impl CredentialStore for SqliteStore {
         let key = access_key_id.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM credentials WHERE access_key_id = ?1",
                     params![key],
                 )?;
@@ -112,7 +112,7 @@ impl CredentialStore for SqliteStore {
                 }
                 if sets.is_empty() {
                     // Nothing to update, just check existence.
-                    let exists: bool = conn.query_row(
+                    let exists: bool = conn.query_row_cached(
                         "SELECT 1 FROM credentials WHERE access_key_id = ?1",
                         params![key],
                         |_| Ok(true),
@@ -128,7 +128,7 @@ impl CredentialStore for SqliteStore {
                 );
                 values.push(Box::new(key));
                 let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-                let affected = conn.execute(&sql, params.as_slice())?;
+                let affected = conn.execute_cached(&sql, params.as_slice())?;
                 Ok(affected > 0)
             })
             .await
@@ -138,7 +138,7 @@ impl CredentialStore for SqliteStore {
     async fn count_active_credentials(&self) -> Result<u64, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let count: u64 = conn.query_row(
+                let count: u64 = conn.query_row_cached(
                     "SELECT COUNT(*) FROM credentials WHERE active = 1",
                     [],
                     |row| row.get(0),
@@ -153,7 +153,7 @@ impl CredentialStore for SqliteStore {
         let cred = credential.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(access_key_id) DO UPDATE SET
@@ -355,7 +355,7 @@ mod tests {
         store
             .read_conn()
             .call(move |conn| {
-                let v: String = conn.query_row(
+                let v: String = conn.query_row_cached(
                     "SELECT updated_at FROM credentials WHERE access_key_id = ?1",
                     params![key],
                     |row| row.get(0),

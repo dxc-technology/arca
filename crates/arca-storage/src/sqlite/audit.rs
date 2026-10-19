@@ -5,7 +5,7 @@ use arca_core::store::audit::{AuditEntry, AuditFilter, AuditStore};
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 /// Build a WHERE clause and string parameter values from an `AuditFilter`.
 /// All values are converted to strings for Send-safety across the tokio-rusqlite boundary.
@@ -80,7 +80,7 @@ impl AuditStore for SqliteStore {
         let entry = entry.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO audit_log (timestamp, request_id, operation, bucket, key,
                         version_id, user_id, access_key_id, source_ip, http_method,
                         http_status, error_code, bytes_sent, bytes_received, duration_ms,
@@ -162,12 +162,17 @@ impl AuditStore for SqliteStore {
 
         self.read_conn()
             .call(move |conn| {
+                // Page bounds are bound, not written into the text, so the
+                // statement is reused across pages.
+                let (l, o) = (params_vec.len() + 1, params_vec.len() + 2);
                 let sql = format!(
-                    "SELECT * FROM audit_log {where_clause} ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset}"
+                    "SELECT * FROM audit_log {where_clause} ORDER BY timestamp DESC LIMIT ?{l} OFFSET ?{o}"
                 );
-                let mut stmt = conn.prepare(&sql)?;
-                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                let mut stmt = conn.prepare_cached(&sql)?;
+                let mut params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+                params_refs.push(&limit);
+                params_refs.push(&offset);
                 let rows = stmt.query_map(params_refs.as_slice(), row_to_audit_entry)?;
                 let mut entries = Vec::new();
                 for row in rows {
@@ -185,7 +190,7 @@ impl AuditStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let sql = format!("SELECT COUNT(*) FROM audit_log {where_clause}");
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
                 let count: i64 = stmt.query_row(params_refs.as_slice(), |row| row.get(0))?;
@@ -199,7 +204,7 @@ impl AuditStore for SqliteStore {
         let before_str = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM audit_log WHERE timestamp < ?1",
                     params![before_str],
                 )?;

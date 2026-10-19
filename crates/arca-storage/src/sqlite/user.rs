@@ -6,7 +6,7 @@ use arca_core::types::User;
 use chrono::DateTime;
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl UserStore for SqliteStore {
@@ -14,7 +14,7 @@ impl UserStore for SqliteStore {
         let u = user.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![
@@ -36,7 +36,7 @@ impl UserStore for SqliteStore {
         let id = user_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT user_id, username, description, is_root, created_at
                      FROM users WHERE user_id = ?1",
                 )?;
@@ -55,7 +55,7 @@ impl UserStore for SqliteStore {
         let name = username.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT user_id, username, description, is_root, created_at
                      FROM users WHERE username = ?1",
                 )?;
@@ -73,7 +73,7 @@ impl UserStore for SqliteStore {
     async fn list_users(&self) -> Result<Vec<User>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT user_id, username, description, is_root, created_at
                      FROM users ORDER BY created_at",
                 )?;
@@ -110,7 +110,7 @@ impl UserStore for SqliteStore {
                     values.push(Box::new(d.clone()));
                 }
                 if sets.is_empty() {
-                    let exists: bool = conn.query_row(
+                    let exists: bool = conn.query_row_cached(
                         "SELECT 1 FROM users WHERE user_id = ?1",
                         params![id],
                         |_| Ok(true),
@@ -126,7 +126,7 @@ impl UserStore for SqliteStore {
                 );
                 values.push(Box::new(id));
                 let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-                let affected = conn.execute(&sql, params.as_slice())?;
+                let affected = conn.execute_cached(&sql, params.as_slice())?;
                 Ok(affected > 0)
             })
             .await
@@ -139,22 +139,22 @@ impl UserStore for SqliteStore {
             .call(move |conn| {
                 let tx = conn.transaction()?;
                 // Remove memberships and grant attachments first
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM team_members WHERE user_id = ?1",
                     params![id],
                 )?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM user_grants WHERE user_id = ?1",
                     params![id],
                 )?;
                 // Cascade credential deletion: a credential must never outlive
                 // its user, otherwise it would authenticate to a non-existent
                 // identity (which the auth layer now denies).
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM credentials WHERE user_id = ?1",
                     params![id],
                 )?;
-                let affected = tx.execute(
+                let affected = tx.execute_cached(
                     "DELETE FROM users WHERE user_id = ?1",
                     params![id],
                 )?;
@@ -169,7 +169,7 @@ impl UserStore for SqliteStore {
         let u = user.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(user_id) DO UPDATE SET

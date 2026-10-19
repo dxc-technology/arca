@@ -5,7 +5,7 @@ use arca_core::store::presigned_url::{PresignedUrlRecord, PresignedUrlStore};
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 fn row_to_presigned_url(row: &rusqlite::Row<'_>) -> rusqlite::Result<PresignedUrlRecord> {
     Ok(PresignedUrlRecord {
@@ -35,7 +35,7 @@ impl PresignedUrlStore for SqliteStore {
         let record = record.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO presigned_urls
                         (id, bucket, key, method, expires_seconds,
                          created_at, expires_at, access_key_id)
@@ -67,7 +67,7 @@ impl PresignedUrlStore for SqliteStore {
         let now = Utc::now().to_rfc3339();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT * FROM presigned_urls
                      WHERE bucket = ?1 AND expires_at > ?2
                      ORDER BY created_at DESC",
@@ -92,7 +92,7 @@ impl PresignedUrlStore for SqliteStore {
         let id = id.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM presigned_urls WHERE id = ?1",
                     params![id],
                 )?;
@@ -110,7 +110,7 @@ impl PresignedUrlStore for SqliteStore {
         let now = Utc::now().to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM presigned_urls WHERE expires_at <= ?1",
                     params![now],
                 )?;

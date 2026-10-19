@@ -5,7 +5,7 @@ use arca_core::store::replication::{JournalEntry, JournalFilter, ReplicationStor
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 fn build_filter_clause(filter: &JournalFilter) -> (String, Vec<String>) {
     let mut conditions: Vec<String> = Vec::new();
@@ -70,7 +70,7 @@ impl ReplicationStore for SqliteStore {
         let e = entry.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO replication_journal (
                         id, bucket, key, version_id, rule_id, event_type,
                         destination_endpoint, destination_bucket, status,
@@ -106,7 +106,7 @@ impl ReplicationStore for SqliteStore {
                 let tx = conn.unchecked_transaction()?;
 
                 let ids: Vec<String> = {
-                    let mut stmt = tx.prepare(
+                    let mut stmt = tx.prepare_cached(
                         "SELECT id FROM replication_journal
                          WHERE status IN ('pending','failed')
                            AND next_retry_at <= ?1
@@ -143,7 +143,7 @@ impl ReplicationStore for SqliteStore {
                 }
                 let param_refs: Vec<&dyn rusqlite::types::ToSql> =
                     update_params.iter().map(|p| p.as_ref()).collect();
-                tx.execute(&update_sql, param_refs.as_slice())?;
+                tx.execute_cached(&update_sql, param_refs.as_slice())?;
 
                 let select_sql = format!(
                     "SELECT * FROM replication_journal WHERE id IN ({})",
@@ -154,7 +154,7 @@ impl ReplicationStore for SqliteStore {
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                let mut stmt = tx.prepare(&select_sql)?;
+                let mut stmt = tx.prepare_cached(&select_sql)?;
                 let id_params: Vec<&dyn rusqlite::types::ToSql> =
                     ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
                 let rows = stmt.query_map(id_params.as_slice(), row_to_entry)?;
@@ -186,7 +186,7 @@ impl ReplicationStore for SqliteStore {
         let now_str = Utc::now().to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "UPDATE replication_journal
                      SET status = ?1, attempts = ?2, last_error = ?3,
                          next_retry_at = ?4, updated_at = ?5
@@ -209,16 +209,21 @@ impl ReplicationStore for SqliteStore {
 
         self.read_conn()
             .call(move |conn| {
+                // Page bounds are bound, not written into the text, so the
+                // statement is reused across pages.
+                let (l, o) = (params_vec.len() + 1, params_vec.len() + 2);
                 let sql = format!(
                     "SELECT * FROM replication_journal {where_clause}
                      ORDER BY created_at DESC
-                     LIMIT {limit} OFFSET {offset}"
+                     LIMIT ?{l} OFFSET ?{o}"
                 );
-                let mut stmt = conn.prepare(&sql)?;
-                let refs: Vec<&dyn rusqlite::types::ToSql> = params_vec
+                let mut stmt = conn.prepare_cached(&sql)?;
+                let mut refs: Vec<&dyn rusqlite::types::ToSql> = params_vec
                     .iter()
                     .map(|p| p as &dyn rusqlite::types::ToSql)
                     .collect();
+                refs.push(&limit);
+                refs.push(&offset);
                 let rows = stmt.query_map(refs.as_slice(), row_to_entry)?;
                 let mut out = Vec::new();
                 for r in rows {
@@ -237,7 +242,7 @@ impl ReplicationStore for SqliteStore {
                 let sql = format!(
                     "SELECT COUNT(*) FROM replication_journal {where_clause}"
                 );
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let refs: Vec<&dyn rusqlite::types::ToSql> = params_vec
                     .iter()
                     .map(|p| p as &dyn rusqlite::types::ToSql)
@@ -253,7 +258,7 @@ impl ReplicationStore for SqliteStore {
         let before_str = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM replication_journal
                      WHERE status = 'completed' AND updated_at < ?1",
                     params![before_str],
@@ -268,7 +273,7 @@ impl ReplicationStore for SqliteStore {
         let before_str = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM replication_journal WHERE updated_at < ?1",
                     params![before_str],
                 )?;
@@ -293,14 +298,14 @@ impl ReplicationStore for SqliteStore {
             .call(move |conn| {
                 match version_id {
                     Some(vid) => {
-                        conn.execute(
+                        conn.execute_cached(
                             "UPDATE objects SET replication_status = ?1
                              WHERE bucket = ?2 AND key = ?3 AND version_id = ?4",
                             params![status, bucket, key, vid],
                         )?;
                     }
                     None => {
-                        conn.execute(
+                        conn.execute_cached(
                             "UPDATE objects SET replication_status = ?1
                              WHERE bucket = ?2 AND key = ?3 AND version_id IS NULL AND is_latest = 1",
                             params![status, bucket, key],

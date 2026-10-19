@@ -7,7 +7,7 @@ use arca_core::store::notification::{
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 /// Build a WHERE clause and string parameter values from a `NotificationEventFilter`.
 fn build_filter_clause(filter: &NotificationEventFilter) -> (String, Vec<String>) {
@@ -75,7 +75,7 @@ impl NotificationStore for SqliteStore {
         let event = event.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO notification_events
                         (id, bucket, key, event_name, event_time, payload,
                          destination_url, configuration_id, delivery_status,
@@ -117,7 +117,7 @@ impl NotificationStore for SqliteStore {
         let last_error = last_error.map(|s| s.to_string());
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "UPDATE notification_events
                      SET delivery_status = ?1, delivery_attempts = ?2, last_error = ?3
                      WHERE id = ?4",
@@ -141,12 +141,17 @@ impl NotificationStore for SqliteStore {
 
         self.read_conn()
             .call(move |conn| {
+                // Page bounds are bound, not written into the text, so the
+                // statement is reused across pages.
+                let (l, o) = (params_vec.len() + 1, params_vec.len() + 2);
                 let sql = format!(
-                    "SELECT * FROM notification_events {where_clause} ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
+                    "SELECT * FROM notification_events {where_clause} ORDER BY created_at DESC LIMIT ?{l} OFFSET ?{o}"
                 );
-                let mut stmt = conn.prepare(&sql)?;
-                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                let mut stmt = conn.prepare_cached(&sql)?;
+                let mut params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+                params_refs.push(&limit);
+                params_refs.push(&offset);
                 let rows = stmt.query_map(params_refs.as_slice(), row_to_notification_event)?;
                 let mut entries = Vec::new();
                 for row in rows {
@@ -170,7 +175,7 @@ impl NotificationStore for SqliteStore {
             .call(move |conn| {
                 let sql =
                     format!("SELECT COUNT(*) FROM notification_events {where_clause}");
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
                 let count: i64 = stmt.query_row(params_refs.as_slice(), |row| row.get(0))?;
@@ -189,7 +194,7 @@ impl NotificationStore for SqliteStore {
         let before_str = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM notification_events WHERE created_at < ?1",
                     params![before_str],
                 )?;

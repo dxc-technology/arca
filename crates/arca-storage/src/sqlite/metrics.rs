@@ -5,7 +5,7 @@ use arca_core::store::metrics::{MetricsSnapshot, MetricsStore};
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 fn row_to_metrics_snapshot(row: &rusqlite::Row<'_>) -> rusqlite::Result<MetricsSnapshot> {
     Ok(MetricsSnapshot {
@@ -36,7 +36,7 @@ impl MetricsStore for SqliteStore {
         let snapshot = snapshot.clone();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO metrics_snapshot (timestamp, bucket_count, object_count,
                         total_size_bytes, disk_total_bytes, disk_available_bytes,
                         active_connections)
@@ -95,7 +95,7 @@ impl MetricsStore for SqliteStore {
                 let count_sql =
                     format!("SELECT COUNT(*) FROM metrics_snapshot {where_clause}");
                 let total: u64 =
-                    conn.query_row(&count_sql, params_refs.as_slice(), |row| row.get(0))?;
+                    conn.query_row_cached(&count_sql, params_refs.as_slice(), |row| row.get(0))?;
 
                 let limit_u64 = limit as u64;
 
@@ -120,7 +120,7 @@ impl MetricsStore for SqliteStore {
                     )
                 };
 
-                let mut stmt = conn.prepare(&sql)?;
+                let mut stmt = conn.prepare_cached(&sql)?;
                 let rows = stmt.query_map(params_refs.as_slice(), row_to_metrics_snapshot)?;
                 let mut snapshots = Vec::new();
                 for row in rows {
@@ -139,7 +139,7 @@ impl MetricsStore for SqliteStore {
         let before_str = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM metrics_snapshot WHERE timestamp < ?1",
                     params![before_str],
                 )?;

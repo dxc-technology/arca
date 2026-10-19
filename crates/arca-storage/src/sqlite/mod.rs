@@ -35,6 +35,39 @@ pub(crate) type TrError = tokio_rusqlite::Error<rusqlite::Error>;
 /// Default number of read-only connections in the pool.
 const DEFAULT_READ_POOL_SIZE: usize = 20;
 
+/// Prepared statements each connection keeps. rusqlite's default (16) is
+/// smaller than the writer's working set, so the hot statements would be
+/// evicted and re-parsed on every request.
+const STATEMENT_CACHE_CAPACITY: usize = 256;
+
+/// `execute` and `query_row` through the connection's prepared-statement
+/// cache. The request paths run the same SQL over and over, and parsing it
+/// again on every call was a sizeable share of a small request's CPU. Only
+/// stable SQL text belongs here: values go in bound parameters, never in the
+/// string, or every distinct value would take a cache slot of its own.
+pub(crate) trait CachedSql {
+    fn execute_cached<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize>;
+
+    fn query_row_cached<T, P, F>(&self, sql: &str, params: P, f: F) -> rusqlite::Result<T>
+    where
+        P: rusqlite::Params,
+        F: FnOnce(&rusqlite::Row<'_>) -> rusqlite::Result<T>;
+}
+
+impl CachedSql for rusqlite::Connection {
+    fn execute_cached<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize> {
+        self.prepare_cached(sql)?.execute(params)
+    }
+
+    fn query_row_cached<T, P, F>(&self, sql: &str, params: P, f: F) -> rusqlite::Result<T>
+    where
+        P: rusqlite::Params,
+        F: FnOnce(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    {
+        self.prepare_cached(sql)?.query_row(params, f)
+    }
+}
+
 /// PRAGMAs applied to every connection (writer and readers), followed by the
 /// `synchronous` level chosen by [`synchronous_pragma`].
 const COMMON_PRAGMAS: &str = "\
@@ -94,6 +127,7 @@ impl SqliteStore {
 
         let writer_pragmas = pragmas.clone();
         conn.call(move |conn| {
+            conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE_CAPACITY);
             conn.execute_batch(&writer_pragmas)?;
             migrations::run_migrations(conn)?;
             Ok(())
@@ -109,6 +143,7 @@ impl SqliteStore {
                 .map_err(|e| ArcaError::Internal(format!("opening read connection: {e}")))?;
             let reader_pragmas = format!("{pragmas}PRAGMA query_only=ON;");
             rc.call(move |conn| {
+                conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE_CAPACITY);
                 conn.execute_batch(&reader_pragmas)?;
                 Ok(())
             })
@@ -136,6 +171,7 @@ impl SqliteStore {
             .map_err(|e| ArcaError::Internal(format!("opening in-memory database: {e}")))?;
 
         conn.call(|conn| {
+            conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE_CAPACITY);
             conn.execute_batch("PRAGMA journal_mode=WAL")?;
             migrations::run_migrations(conn)?;
             Ok(())
@@ -229,5 +265,70 @@ mod tests {
         let store = SqliteStore::open_with_fsync(&dir.path().join("arca.db"), false).await.unwrap();
         assert_eq!(synchronous(store.write_conn()).await, 1);
         assert_eq!(synchronous(store.read_conn()).await, 1);
+    }
+
+    /// Prepared statements currently alive on `conn`: cached statements stay
+    /// prepared between calls, uncached ones are finalized after each call.
+    fn live_statements(conn: &rusqlite::Connection) -> usize {
+        let mut count = 0;
+        // SAFETY: walks the connection's own statement list without touching
+        // the statements; nothing else uses `conn` meanwhile.
+        unsafe {
+            let db = conn.handle();
+            let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+            while !stmt.is_null() {
+                count += 1;
+                stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+            }
+        }
+        count
+    }
+
+    #[test]
+    fn cached_helpers_reuse_one_prepared_statement_per_sql() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (v INTEGER)").unwrap();
+        for v in 0..3 {
+            assert_eq!(conn.execute_cached("INSERT INTO t (v) VALUES (?1)", [v]).unwrap(), 1);
+        }
+        for _ in 0..3 {
+            let n: i64 = conn
+                .query_row_cached("SELECT COUNT(*) FROM t WHERE v >= ?1", [0], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 3);
+        }
+        assert_eq!(live_statements(&conn), 2, "one cached statement per distinct SQL");
+    }
+
+    #[test]
+    fn query_row_cached_reports_no_rows_like_query_row() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (v INTEGER)").unwrap();
+        let err = conn
+            .query_row_cached("SELECT v FROM t", [], |r| r.get::<_, i64>(0))
+            .unwrap_err();
+        assert!(matches!(err, rusqlite::Error::QueryReturnedNoRows));
+    }
+
+    /// rusqlite keeps 16 statements per connection by default, fewer than the
+    /// writer's working set: the store's connections must keep many more, or
+    /// the hot statements would be evicted and re-parsed on every request.
+    #[tokio::test]
+    async fn store_connections_cache_more_statements_than_the_rusqlite_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteStore::open(&dir.path().join("arca.db")).await.unwrap();
+        for conn in [store.write_conn(), store.read_conn()] {
+            let live = conn
+                .call(|c| {
+                    for i in 0..64 {
+                        let _: i64 = c.query_row_cached(&format!("SELECT {i}"), [], |r| r.get(0))?;
+                    }
+                    Ok(live_statements(c))
+                })
+                .await
+                .map_err(|e: TrError| e)
+                .unwrap();
+            assert_eq!(live, 64);
+        }
     }
 }

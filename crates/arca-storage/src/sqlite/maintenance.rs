@@ -7,7 +7,7 @@ use arca_core::store::maintenance::{
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 const JOB_COLUMNS: &str =
     "id, type, status, mode, params, total, done, rate, last_error, created_at, updated_at, started_at, finished_at";
@@ -48,7 +48,7 @@ impl MaintenanceStore for SqliteStore {
         let params_str = serde_json::to_string(&j.params).unwrap_or_else(|_| "{}".to_string());
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO maintenance_jobs (
                         id, type, status, mode, params, total, done, rate,
                         last_error, created_at, updated_at, started_at, finished_at
@@ -79,7 +79,7 @@ impl MaintenanceStore for SqliteStore {
         let id = id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(&format!(
+                let mut stmt = conn.prepare_cached(&format!(
                     "SELECT {JOB_COLUMNS} FROM maintenance_jobs WHERE id = ?1"
                 ))?;
                 let mut rows = stmt.query_map(params![id], row_to_job)?;
@@ -95,7 +95,7 @@ impl MaintenanceStore for SqliteStore {
     async fn active_job(&self) -> Result<Option<MaintenanceJob>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(&format!(
+                let mut stmt = conn.prepare_cached(&format!(
                     "SELECT {JOB_COLUMNS} FROM maintenance_jobs \
                      WHERE status IN ('pending','running','paused') \
                      ORDER BY created_at ASC LIMIT 1"
@@ -113,7 +113,7 @@ impl MaintenanceStore for SqliteStore {
     async fn list_jobs(&self, limit: u32) -> Result<Vec<MaintenanceJob>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(&format!(
+                let mut stmt = conn.prepare_cached(&format!(
                     "SELECT {JOB_COLUMNS} FROM maintenance_jobs \
                      ORDER BY created_at DESC LIMIT ?1"
                 ))?;
@@ -139,7 +139,7 @@ impl MaintenanceStore for SqliteStore {
         let now = Utc::now().to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "UPDATE maintenance_jobs SET done = ?1, total = ?2, rate = ?3, updated_at = ?4 \
                      WHERE id = ?5",
                     params![done as i64, total as i64, rate, now, id],
@@ -163,7 +163,7 @@ impl MaintenanceStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 // ?1 status, ?2 last_error, ?3 now (also start/finish stamp), ?4 id.
-                let rows = conn.execute(
+                let rows = conn.execute_cached(
                     "UPDATE maintenance_jobs SET \
                         status = ?1, \
                         last_error = ?2, \
@@ -193,14 +193,14 @@ impl MaintenanceStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute(
+                tx.execute_cached(
                     "INSERT INTO maintenance_job_logs (job_id, ts, level, message) \
                      VALUES (?1, ?2, ?3, ?4)",
                     params![job_id, now, level, message],
                 )?;
                 // Prune to the newest `max_logs` rows for this job (rowid is the
                 // monotonic insert order, robust to equal timestamps).
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM maintenance_job_logs WHERE job_id = ?1 AND rowid NOT IN (
                         SELECT rowid FROM maintenance_job_logs WHERE job_id = ?1 \
                         ORDER BY rowid DESC LIMIT ?2
@@ -222,7 +222,7 @@ impl MaintenanceStore for SqliteStore {
         let job_id = job_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT job_id, ts, level, message FROM maintenance_job_logs \
                      WHERE job_id = ?1 ORDER BY rowid DESC LIMIT ?2",
                 )?;
@@ -251,7 +251,7 @@ impl MaintenanceStore for SqliteStore {
         let now = Utc::now().to_rfc3339();
         self.conn
             .call(move |conn| {
-                let rows = conn.execute(
+                let rows = conn.execute_cached(
                     "UPDATE maintenance_jobs SET status = 'failed', \
                         last_error = 'interrupted by restart', \
                         updated_at = ?1, finished_at = ?1 \
@@ -268,14 +268,14 @@ impl MaintenanceStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM maintenance_job_logs WHERE job_id IN (
                         SELECT id FROM maintenance_jobs \
                         WHERE status IN ('completed','failed','cancelled')
                      )",
                     [],
                 )?;
-                let rows = tx.execute(
+                let rows = tx.execute_cached(
                     "DELETE FROM maintenance_jobs WHERE status IN ('completed','failed','cancelled')",
                     [],
                 )?;

@@ -4,7 +4,7 @@ use arca_core::error::ArcaError;
 use arca_core::store::server_config::ServerConfigStore;
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl ServerConfigStore for SqliteStore {
@@ -12,7 +12,7 @@ impl ServerConfigStore for SqliteStore {
         let key = key.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT config_value FROM server_config WHERE config_key = ?1",
                 )?;
                 let result = stmt.query_row(params![key], |row| row.get(0));
@@ -31,7 +31,7 @@ impl ServerConfigStore for SqliteStore {
         let value = value.to_string();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO server_config (config_key, config_value, updated_at)
                      VALUES (?1, ?2, ?3)
                      ON CONFLICT(config_key) DO UPDATE SET config_value = ?2, updated_at = ?3",
@@ -47,7 +47,7 @@ impl ServerConfigStore for SqliteStore {
         let key = key.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM server_config WHERE config_key = ?1",
                     params![key],
                 )?;
@@ -60,7 +60,7 @@ impl ServerConfigStore for SqliteStore {
     async fn list_server_config(&self) -> Result<Vec<(String, String)>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT config_key, config_value FROM server_config ORDER BY config_key",
                 )?;
                 let rows = stmt.query_map([], |row| {

@@ -7,7 +7,7 @@ use arca_core::types::Grant;
 use chrono::DateTime;
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl GrantStore for SqliteStore {
@@ -17,7 +17,7 @@ impl GrantStore for SqliteStore {
             .map_err(|e| ArcaError::Internal(format!("serialize grant document: {e}")))?;
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![
@@ -39,7 +39,7 @@ impl GrantStore for SqliteStore {
         let id = grant_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT grant_id, name, description, document, created_at, updated_at
                      FROM grants WHERE grant_id = ?1",
                 )?;
@@ -58,7 +58,7 @@ impl GrantStore for SqliteStore {
         let n = name.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT grant_id, name, description, document, created_at, updated_at
                      FROM grants WHERE name = ?1",
                 )?;
@@ -76,7 +76,7 @@ impl GrantStore for SqliteStore {
     async fn list_grants(&self) -> Result<Vec<Grant>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT grant_id, name, description, document, created_at, updated_at
                      FROM grants ORDER BY created_at",
                 )?;
@@ -156,7 +156,7 @@ impl GrantStore for SqliteStore {
 
                 let params_ref: Vec<&dyn rusqlite::types::ToSql> =
                     param_values.iter().map(|p| p.as_ref()).collect();
-                let affected = conn.execute(&sql, params_ref.as_slice())?;
+                let affected = conn.execute_cached(&sql, params_ref.as_slice())?;
                 Ok(affected > 0)
             })
             .await
@@ -168,15 +168,15 @@ impl GrantStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM user_grants WHERE grant_id = ?1",
                     params![id],
                 )?;
-                tx.execute(
+                tx.execute_cached(
                     "DELETE FROM team_grants WHERE grant_id = ?1",
                     params![id],
                 )?;
-                let affected = tx.execute(
+                let affected = tx.execute_cached(
                     "DELETE FROM grants WHERE grant_id = ?1",
                     params![id],
                 )?;
@@ -195,7 +195,7 @@ impl GrantStore for SqliteStore {
                 // Refresh updated_at on an idempotent re-attach too: the LWW
                 // reconcile must see a re-attach as newer than any
                 // concurrent detach tombstone, or the user's intent is lost.
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO user_grants (user_id, grant_id, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(user_id, grant_id) DO UPDATE SET updated_at = excluded.updated_at",
                     params![uid, gid, chrono::Utc::now().to_rfc3339()],
@@ -211,7 +211,7 @@ impl GrantStore for SqliteStore {
         let gid = grant_id.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM user_grants WHERE user_id = ?1 AND grant_id = ?2",
                     params![uid, gid],
                 )?;
@@ -227,7 +227,7 @@ impl GrantStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 // updated_at refreshed on re-attach — see attach_to_user.
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO team_grants (team_id, grant_id, updated_at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(team_id, grant_id) DO UPDATE SET updated_at = excluded.updated_at",
                     params![tid, gid, chrono::Utc::now().to_rfc3339()],
@@ -243,7 +243,7 @@ impl GrantStore for SqliteStore {
         let gid = grant_id.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM team_grants WHERE team_id = ?1 AND grant_id = ?2",
                     params![tid, gid],
                 )?;
@@ -257,7 +257,7 @@ impl GrantStore for SqliteStore {
         let uid = user_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT g.grant_id, g.name, g.description, g.document, g.created_at, g.updated_at
                      FROM grants g
                      JOIN user_grants ug ON ug.grant_id = g.grant_id
@@ -279,7 +279,7 @@ impl GrantStore for SqliteStore {
         let tid = team_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT g.grant_id, g.name, g.description, g.document, g.created_at, g.updated_at
                      FROM grants g
                      JOIN team_grants tg ON tg.grant_id = g.grant_id
@@ -304,7 +304,7 @@ impl GrantStore for SqliteStore {
         let uid = user_id.to_string();
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT g.document
                      FROM grants g
                      WHERE g.grant_id IN (
@@ -343,7 +343,7 @@ impl GrantStore for SqliteStore {
             .map_err(|e| ArcaError::Internal(format!("serialize grant document: {e}")))?;
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(grant_id) DO UPDATE SET

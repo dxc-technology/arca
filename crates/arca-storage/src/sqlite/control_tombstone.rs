@@ -5,7 +5,7 @@ use arca_core::store::{ControlTombstone, ControlTombstoneStore};
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl ControlTombstoneStore for SqliteStore {
@@ -19,7 +19,7 @@ impl ControlTombstoneStore for SqliteStore {
         let now = Utc::now().to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO control_tombstones (entity_type, entity_key, deleted_at)
                      VALUES (?1, ?2, ?3)
                      ON CONFLICT(entity_type, entity_key) DO UPDATE SET
@@ -41,7 +41,7 @@ impl ControlTombstoneStore for SqliteStore {
         let deleted_at = tombstone.deleted_at.to_rfc3339();
         self.conn
             .call(move |conn| {
-                conn.execute(
+                conn.execute_cached(
                     "INSERT INTO control_tombstones (entity_type, entity_key, deleted_at)
                      VALUES (?1, ?2, ?3)
                      ON CONFLICT(entity_type, entity_key) DO UPDATE SET
@@ -57,7 +57,7 @@ impl ControlTombstoneStore for SqliteStore {
     async fn list_control_tombstones(&self) -> Result<Vec<ControlTombstone>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                let mut stmt = conn.prepare(
+                let mut stmt = conn.prepare_cached(
                     "SELECT entity_type, entity_key, deleted_at FROM control_tombstones",
                 )?;
                 let rows = stmt.query_map([], |row| Ok(row_to_tombstone(row)))?;
@@ -80,7 +80,7 @@ impl ControlTombstoneStore for SqliteStore {
         let ekey = entity_key.to_string();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM control_tombstones WHERE entity_type = ?1 AND entity_key = ?2",
                     params![etype, ekey],
                 )?;
@@ -94,7 +94,7 @@ impl ControlTombstoneStore for SqliteStore {
         let cutoff = before.to_rfc3339();
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
+                let affected = conn.execute_cached(
                     "DELETE FROM control_tombstones WHERE deleted_at < ?1",
                     params![cutoff],
                 )?;
