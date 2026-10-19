@@ -1608,7 +1608,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-055</td>
 <td>Per-IP rate limit trusts <code>X-Forwarded-For</code> from any client</td>
 <td><code>extract_client_ip</code> keys the per-IP limiter on the first <code>X-Forwarded-For</code> address whenever the header is present, and only falls back to the TCP peer (<code>ConnectInfo</code>, inserted by <code>serve.rs</code>) without it. A client that talks to Arca directly can send a different fake address on every request and never be limited; the audit log records the same unverified header</td>
-<td>A <code>[server] trusted_proxies</code> list (addresses or CIDRs): honour <code>X-Forwarded-For</code> / <code>X-Real-IP</code> only when the peer is a trusted proxy, taking the right-most untrusted address; default none, so direct deployments use the peer address</td>
+<td>First step: record the TCP peer address in the audit log next to the header-reported one (a new audit column, shown by the admin API and the console), so a forged header can no longer hide the real origin. Then a <code>[server] trusted_proxies</code> list (addresses or CIDRs): honour <code>X-Forwarded-For</code> / <code>X-Real-IP</code> only when the peer is a trusted proxy, taking the right-most untrusted address; default none, so direct deployments use the peer address</td>
 <td><code>rate_limit.rs</code> / <code>audit.rs</code> unit tests</td>
 <td><code>crates/arca-proto/src/middleware/rate_limit.rs</code>, <code>crates/arca-proto/src/middleware/audit.rs</code></td>
 </tr>
