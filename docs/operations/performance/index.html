@@ -1188,6 +1188,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#comparing-with-a-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing with a baseline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#reading-the-numbers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1450,6 +1461,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#comparing-with-a-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing with a baseline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#reading-the-numbers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1581,6 +1603,11 @@ disk. For a baseline, stop everything else on the machine first.</p>
 <td><code>perf-results/&lt;UTC time&gt;-&lt;commit&gt;</code></td>
 <td>Run directory (git-ignored)</td>
 </tr>
+<tr>
+<td><code>--baseline DIR</code></td>
+<td></td>
+<td>Compare the report with an earlier run (see <a href="#comparing-with-a-baseline">Comparing with a baseline</a>)</td>
+</tr>
 </tbody>
 </table>
 <p>Arca runs its production image with its default configuration, so <code>[storage] fsync = true</code>.
@@ -1645,12 +1672,38 @@ compression costs, not what it saves.</p>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    └── server.log
 </code></pre></div>
 <p>Nothing is discarded: the report links every raw file, and <code>bin/test perf-report</code> covers
-the report generator (<code>tests/perf/report.py</code>). Regenerate a report after editing the
-generator with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-p<span class="w"> </span>arca-test-perf-suite<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>-f<span class="w"> </span>docker/docker-compose.perf-suite.yml<span class="w"> </span>--profile<span class="w"> </span>perf-suite<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--no-deps<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span>-u<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/perf-results/&lt;run&gt;:/results&quot;</span><span class="w"> </span>perf-runner<span class="w"> </span>report<span class="w"> </span>/results
+the report generator (<code>tests/perf/report.py</code>). Regenerate the report of a finished run,
+for instance after editing the generator, with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/perf-test<span class="w"> </span>report<span class="w"> </span>perf-results/&lt;run&gt;
 </code></pre></div>
+<p>It runs the generator in a plain Python container: no server, no compose project and no
+volume, so it is safe to run while a suite is in progress.</p>
+<h3 id="comparing-with-a-baseline">Comparing with a baseline<a class="headerlink" href="#comparing-with-a-baseline" title="Permanent link">&para;</a></h3>
+<p>A targeted run (<code>--targets arca --variants plain --scenarios list-c16</code>, say, to measure
+one change) has no MinIO of its own and nothing to compare its figures with. Give it an
+earlier run as a baseline, either when the run is made or afterwards:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/perf-test<span class="w"> </span>suite<span class="w"> </span>--targets<span class="w"> </span>arca<span class="w"> </span>--variants<span class="w"> </span>plain<span class="w"> </span>--scenarios<span class="w"> </span>list-c16<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--baseline<span class="w"> </span>perf-results/&lt;earlier-run&gt;
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>bin/perf-test<span class="w"> </span>report<span class="w"> </span>perf-results/&lt;run&gt;<span class="w"> </span>--baseline<span class="w"> </span>perf-results/&lt;earlier-run&gt;
+</code></pre></div>
+<p>The report still covers only the run's own scenarios and servers. For each of them it adds:</p>
+<ul>
+<li><strong>a third bar</strong>, Arca in the baseline, between Arca and MinIO, and under the ratio to
+  MinIO the change since the baseline. A change within ±3% is shown as noise, not as a
+  gain or a loss;</li>
+<li><strong>MinIO from the baseline</strong> when the run did not measure it, labelled <em>MinIO
+  (baseline)</em>. The headline share of MinIO then uses those figures too, and says so;</li>
+<li><strong>the baseline's rows</strong> in the scenario details, and its figures and the change in the
+  listing, maintenance and boto3 tables (shorter is better for seconds, higher for
+  throughput);</li>
+<li><strong>a warning</strong> when the two runs were not made the same way: host, Docker resources,
+  profile, duration, storage, MinIO image or dataset sizes. The changes are then not like
+  for like.</li>
+</ul>
+<p>The baseline is only read. It is mounted under its own name, and the report links its
+<code>report.html</code> as <code>../&lt;earlier-run&gt;/report.html</code>, which resolves when both runs are in
+<code>perf-results/</code>. <code>summary.json</code> records the comparison in <code>baseline</code>,
+<code>baseline_comparisons</code>, <code>baseline_headline</code> and <code>baseline_mismatches</code>.</p>
 <h3 id="reading-the-numbers">Reading the numbers<a class="headerlink" href="#reading-the-numbers" title="Permanent link">&para;</a></h3>
 <p>The headline is Arca's throughput as a share of MinIO's, the geometric mean over the
 scenarios of a variant. The figures depend on the host, the container runtime and the disk:
@@ -1663,9 +1716,9 @@ Arca; they are never linked into, built into or distributed with Arca. MinIO no 
 publishes server images on Docker Hub: the default is Chainguard's build of upstream MinIO
 (<code>cgr.dev/chainguard/minio</code>), and <code>PERF_MINIO_IMAGE</code> selects another one.</p>
 <h2 id="quick-boto3-check">Quick boto3 check<a class="headerlink" href="#quick-boto3-check" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/perf-test<span class="w">                        </span><span class="c1"># against the Arca you are running</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>bin/perf-test<span class="w"> </span>--encryption<span class="w">           </span><span class="c1"># self-contained, data in memory</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>bin/perf-test<span class="w"> </span>--tls<span class="w">                  </span><span class="c1"># self-contained, TLS with a throwaway CA</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>bin/perf-test<span class="w">                        </span><span class="c1"># against the Arca you are running</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>bin/perf-test<span class="w"> </span>--encryption<span class="w">           </span><span class="c1"># self-contained, data in memory</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>bin/perf-test<span class="w"> </span>--tls<span class="w">                  </span><span class="c1"># self-contained, TLS with a throwaway CA</span>
 </code></pre></div>
 <p>It reports per-operation latencies and two rates: <code>ops_per_sec</code>, the rate of one client
 (operations over their summed latencies, kept for comparison with older results), and
