@@ -1581,18 +1581,10 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/compress_existing.rs</code></td>
 </tr>
 <tr>
-<td>TD-048</td>
-<td>SQLite commits are not grouped: with <code>[storage] fsync = true</code> every commit is an fsync on the single writer connection</td>
-<td><code>SqliteStore</code> serializes all writes on one connection, and with <code>synchronous=FULL</code> (the <code>[storage] fsync = true</code> default since TD-038) each transaction fsyncs the WAL before the next one can start, so the commit rate is capped at one per fsync latency of the database disk, whatever the client concurrency. Measured 2026-10-02..05 with warp, 1 KiB PUTs: about 200-225 PUT/s at concurrency 16-64 on a 3 ms disk (AWS gp3 EBS, Hyper-V virtual disk; -73..-78% against no fsync, against -43..-53% with the file fsyncs alone), 15-25 PUT/s on a LUKS HDD; on local NVMe (0.16 ms) the cap is above the server's other limits (FULL costs 2-5 points over NORMAL). The audit writer already commits in 1 s batches, so only metadata commits are affected. <code>[storage] fsync = false</code> removes the cap at the cost of durability.</td>
-<td>Group commit: let concurrent metadata writes queue while one commit is in flight and commit the queued ones in a single transaction (one fsync for many requests), acknowledging each request only after the transaction holding it is durable. Must keep each request's own constraints (conditional-write CAS, unique <code>is_latest</code> index) failing only that request, not the whole group.</td>
-<td>None (throughput only)</td>
-<td><code>crates/arca-storage/src/sqlite/mod.rs</code> (<code>synchronous_pragma</code>), <code>crates/arca-storage/src/sqlite/metadata.rs</code> (write transactions)</td>
-</tr>
-<tr>
 <td>TD-050</td>
 <td>Small-PUT throughput plateau on ARM, not yet explained</td>
 <td>On an ARM single-board computer (RK3588, 8 cores) the no-fsync baseline saturated at about 200-270 small (1 KiB) PUTs per second whatever the concurrency, with the CPU mostly idle (2026-10-02). The same build does about 400 PUT/s at concurrency 1 on an x86 VM (4 vCPU) and about 2,400 at concurrency 16 on an AWS c8id.xlarge, so it is not a general limit. Not investigated. Leading hypothesis to verify first: one saturated thread (the single SQLite writer, which until TD-038 also committed one audit batch per request) looks like an idle machine on 8 cores.</td>
-<td>Profile a small-PUT run on ARM (per-thread CPU with <code>top -H</code> / <code>perf</code>, SQLite writer queue time) with the audit batching now in place; if the writer thread is the bottleneck this folds into TD-048 (group commit), otherwise track the real cause here.</td>
+<td>Profile a small-PUT run on ARM (per-thread CPU with <code>top -H</code> / <code>perf</code>, SQLite writer queue time) with the audit batching now in place; group commit (TD-048, resolved 2026-10-20) has since lifted the single-writer commit cap, so re-measure on ARM first; if the plateau remains, track the real cause here.</td>
 <td>None (throughput only)</td>
 <td>Unknown until investigated</td>
 </tr>
@@ -1834,6 +1826,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-047</td>
 <td>Plain-HTTP listener did not set <code>TCP_NODELAY</code></td>
 <td>Both listeners now share one accept loop (<code>crates/arca-server/src/serve.rs</code>), whose <code>accept</code> calls <code>set_nodelay(true)</code> on every accepted connection (first fixed in a <code>plain_http_listener</code> wrapper around <code>axum::serve</code>, since replaced). Keep-alive GETs no longer wait about 40 ms for the client's delayed ACK. Regression test <code>accepted_connections_disable_nagle</code> checks the option on an accepted socket (deterministic, no timing)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-048</td>
+<td>SQLite commits were not grouped</td>
+<td>With <code>[storage] fsync = true</code> every commit on the single writer connection is an fsync of the WAL, and each write was its own transaction, so small writes were capped at one per fsync latency of the database disk whatever the concurrency (about 200-225 PUT/s at concurrency 16-64 on a 3 ms disk, measured 2026-10-02..05). A group committer (<code>crates/arca-storage/src/sqlite/group_commit.rs</code>) now runs the request-path writes (object writes and deletes, DeleteObjects, multipart, object tags, replication journal and notification event inserts) that queue up while a commit is in flight in one transaction, each under its own savepoint, at most 64 per group and with no linger, answering each caller only after the COMMIT. A failed write rolls back its savepoint alone; when the group cannot commit (COMMIT error, or SQLite ending the transaction) every write of it that had succeeded gets the error. Writes run in submission order, so CAS, the unique <code>is_latest</code> index and the cluster <code>seq</code> order behave as before. The rarer writes keep calling the writer directly. Measured 2026-10-20 with an interleaved A/B, durable SQLite, reference host: PUT 1 KiB c16 924 to 1,509 obj/s, c64 888 to 2,293, PUT 64 KiB c16 805 to 1,139, DeleteObjects c16 4,522 to 8,750, c1 unchanged. Unit tests cover grouping, the group size bound, per-write failure and panic, a transaction ended by a write, a failed COMMIT, a closed writer, serial visibility inside a group, CAS and <code>seq</code> order, and that every converted write joins the group</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>

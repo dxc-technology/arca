@@ -7,7 +7,7 @@ use arca_core::store::notification::{
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{CachedSql, SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError, WriteError};
 
 /// Build a WHERE clause and string parameter values from a `NotificationEventFilter`.
 fn build_filter_clause(filter: &NotificationEventFilter) -> (String, Vec<String>) {
@@ -73,9 +73,8 @@ impl NotificationStore for SqliteStore {
         event: &NotificationEventRecord,
     ) -> Result<(), ArcaError> {
         let event = event.clone();
-        self.conn
-            .call(move |conn| {
-                conn.execute_cached(
+        self.write(move |tx| {
+                tx.execute_cached(
                     "INSERT INTO notification_events
                         (id, bucket, key, event_name, event_time, payload,
                          destination_url, configuration_id, delivery_status,
@@ -100,7 +99,7 @@ impl NotificationStore for SqliteStore {
                 Ok(())
             })
             .await
-            .map_err(|e: TrError| {
+            .map_err(|e: WriteError<rusqlite::Error>| {
                 ArcaError::Internal(format!("insert_notification_event: {e}"))
             })
     }
@@ -232,6 +231,30 @@ mod tests {
             created_at: Utc::now(),
             connector_type: "webhook".to_string(),
         }
+    }
+
+    /// The event of a request is written in the request-path write group.
+    #[tokio::test]
+    async fn concurrent_event_inserts_share_one_commit() {
+        use crate::sqlite::test_support::{commits, count_commits, hold_writer};
+        let store = std::sync::Arc::new(SqliteStore::open_in_memory().await.unwrap());
+        let count = count_commits(store.write_conn()).await;
+        let held = hold_writer(store.write_conn()).await;
+        let inserts: Vec<_> = (0..5)
+            .map(|i| {
+                let store = store.clone();
+                tokio::spawn(async move {
+                    store
+                        .insert_notification_event(&sample_event("b", &format!("k{i}"), "s3:ObjectCreated:Put"))
+                        .await
+                })
+            })
+            .collect();
+        for insert in inserts {
+            insert.await.unwrap().unwrap();
+        }
+        held.await.unwrap();
+        assert_eq!(commits(&count), 1);
     }
 
     #[tokio::test]

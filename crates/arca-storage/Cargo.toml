@@ -43,5 +43,7 @@ default = []
 postgres = ["sqlx-core", "sqlx-postgres"]
 
 [dev-dependencies]
+# `hooks`: the tests count the writer's commits with a commit hook.
+rusqlite = { workspace = true, features = ["hooks"] }
 libc = { workspace = true }
 tempfile = { workspace = true }

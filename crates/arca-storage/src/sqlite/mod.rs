@@ -6,13 +6,17 @@
 //!
 //! A pool of read-only connections (default 20) handles SELECT queries in
 //! parallel, while a single write connection serializes mutations. This
-//! exploits WAL mode's concurrent reader capability.
+//! exploits WAL mode's concurrent reader capability. The frequent
+//! request-path writes go through a group committer ([`group_commit`]), which
+//! commits the writes queued meanwhile in one transaction, so concurrent
+//! requests share one WAL fsync.
 
 mod audit;
 mod control_snapshot;
 mod control_tombstone;
 mod credential;
 mod grant;
+mod group_commit;
 mod maintenance;
 mod metadata;
 mod metrics;
@@ -28,6 +32,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use arca_core::error::ArcaError;
+
+pub(crate) use group_commit::WriteError;
 
 /// Type alias for the tokio-rusqlite error with rusqlite::Error as the inner type.
 pub(crate) type TrError = tokio_rusqlite::Error<rusqlite::Error>;
@@ -80,10 +86,8 @@ const COMMON_PRAGMAS: &str = "\
 /// `PRAGMA synchronous` for `[storage] fsync`. FULL fsyncs the WAL at every
 /// commit, so an acknowledged write survives a power loss; NORMAL (WAL mode)
 /// fsyncs only at checkpoints, so the last commits can be lost (the database
-/// itself stays consistent).
-// TECHDEBT(TD-048): with FULL every commit on the single writer connection is
-// an fsync, so a slow disk caps the commit rate; group commit would share one
-// fsync among concurrent writes.
+/// itself stays consistent). With FULL, concurrent request-path writes share
+/// one fsync through the group committer.
 fn synchronous_pragma(fsync: bool) -> &'static str {
     if fsync {
         "PRAGMA synchronous=FULL;"
@@ -96,6 +100,8 @@ fn synchronous_pragma(fsync: bool) -> &'static str {
 pub struct SqliteStore {
     /// Single write connection (also used for reads when no pool is available).
     conn: tokio_rusqlite::Connection,
+    /// Commits the request-path writes in groups on `conn` (see [`Self::write`]).
+    group: group_commit::GroupCommitter,
     /// Pool of read-only connections for parallel SELECT queries.
     read_pool: Vec<tokio_rusqlite::Connection>,
     /// Round-robin counter for read pool dispatch.
@@ -166,7 +172,8 @@ impl SqliteStore {
             fsync,
             "SQLite database ready"
         );
-        Ok(Self { conn, read_pool, read_idx: AtomicUsize::new(0), cluster_mode: AtomicBool::new(false) })
+        let group = group_commit::GroupCommitter::spawn(conn.clone());
+        Ok(Self { conn, group, read_pool, read_idx: AtomicUsize::new(0), cluster_mode: AtomicBool::new(false) })
     }
 
     /// Opens an in-memory SQLite database (for tests).
@@ -187,8 +194,10 @@ impl SqliteStore {
         .await
         .map_err(|e: TrError| ArcaError::Internal(format!("initializing in-memory database: {e}")))?;
 
+        let group = group_commit::GroupCommitter::spawn(conn.clone());
         Ok(Self {
             conn,
+            group,
             read_pool: Vec::new(),
             read_idx: AtomicUsize::new(0),
             cluster_mode: AtomicBool::new(false),
@@ -228,6 +237,20 @@ impl SqliteStore {
         &self.conn
     }
 
+    /// Runs `write` on the writer connection, committed together with the
+    /// other writes queued meanwhile: one transaction, so one WAL fsync, for
+    /// the whole group, each write under its own savepoint. `write` must not
+    /// begin or commit a transaction itself. For the frequent request-path
+    /// writes; the rest call the writer connection directly.
+    pub(crate) async fn write<F, R, E>(&self, write: F) -> Result<R, WriteError<E>>
+    where
+        F: FnOnce(&mut rusqlite::Savepoint<'_>) -> Result<R, E> + Send + 'static,
+        R: Send + 'static,
+        E: Send + 'static,
+    {
+        self.group.write(write).await
+    }
+
     /// Dispatches a read-only query to the pool (round-robin).
     /// Falls back to the write connection if the pool is empty (in-memory tests).
     pub(crate) fn read_conn(&self) -> &tokio_rusqlite::Connection {
@@ -236,6 +259,53 @@ impl SqliteStore {
         }
         let idx = self.read_idx.fetch_add(1, Ordering::Relaxed) % self.read_pool.len();
         &self.read_pool[idx]
+    }
+}
+
+/// Test helpers for the group committer, shared by the store's test modules.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    /// Counts the commits of the writer `conn` from now on (read it with
+    /// [`commits`]).
+    pub(crate) async fn count_commits(conn: &tokio_rusqlite::Connection) -> Arc<AtomicUsize> {
+        let count = Arc::new(AtomicUsize::new(0));
+        let counter = count.clone();
+        conn.call(move |c| {
+            c.commit_hook(Some(move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+                false
+            }));
+            Ok::<_, rusqlite::Error>(())
+        })
+        .await
+        .unwrap();
+        count
+    }
+
+    pub(crate) fn commits(count: &AtomicUsize) -> usize {
+        count.load(Ordering::SeqCst)
+    }
+
+    /// Keeps the writer `conn` busy for 200 ms, so the grouped writes
+    /// submitted meanwhile queue up and commit as one group; returns once the
+    /// writer is held. The test runtime is single-threaded: writes spawned one
+    /// after the other are queued in that order before the committer runs.
+    pub(crate) async fn hold_writer(conn: &tokio_rusqlite::Connection) -> tokio::task::JoinHandle<()> {
+        let conn = conn.clone();
+        let held = tokio::spawn(async move {
+            conn.call(|_| {
+                std::thread::sleep(Duration::from_millis(200));
+                Ok::<_, rusqlite::Error>(())
+            })
+            .await
+            .unwrap();
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        held
     }
 }
 

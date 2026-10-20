@@ -12,13 +12,13 @@ use std::collections::HashMap;
 use chrono::DateTime;
 use rusqlite::{params, Connection, OptionalExtension};
 
-use super::{CachedSql, SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError, WriteError};
 
 /// Error type for the CAS-checked write closures (`put_object_if`,
 /// `delete_object_if`, `delete_object_version_if`): distinguishes a refused
-/// precondition (mapped to the matching S3 error, with nothing written —
-/// `?` on the transaction rolls it back on drop) from any other database
-/// error (mapped to `ArcaError::Internal`).
+/// precondition (mapped to the matching S3 error, with nothing written: the
+/// write's savepoint is rolled back) from any other database error (mapped
+/// to `ArcaError::Internal`).
 #[derive(Debug)]
 enum CasError {
     // Only ever consumed via the `{other:?}` Debug format in `map_cas_result`.
@@ -33,17 +33,17 @@ impl From<rusqlite::Error> for CasError {
     }
 }
 
-/// Converts the result of a CAS-checked `conn.call(...)` into `ArcaError`,
+/// Converts the result of a CAS-checked grouped write into `ArcaError`,
 /// turning a refused precondition into the matching `S3Error` and anything
 /// else into `ArcaError::Internal`.
 fn map_cas_result<T>(
-    result: Result<T, tokio_rusqlite::Error<CasError>>,
+    result: Result<T, WriteError<CasError>>,
     op: &str,
     resource: &str,
 ) -> Result<T, ArcaError> {
     result.map_err(|e| match e {
-        tokio_rusqlite::Error::Error(e) => cas_error(e, op, resource),
-        other => ArcaError::Internal(format!("{op}: {other:?}")),
+        WriteError::Write(e) => cas_error(e, op, resource),
+        WriteError::Group(msg) => ArcaError::Internal(format!("{op}: {msg}")),
     })
 }
 
@@ -100,7 +100,7 @@ fn row_to_tagged_object(row: &rusqlite::Row) -> Result<(ObjectRecord, usize), ru
 /// Deletes an upload and its parts inside `tx` and returns the parts that
 /// were deleted (none when the upload is already gone).
 fn take_upload(
-    tx: &rusqlite::Transaction,
+    tx: &Connection,
     upload_id: &str,
 ) -> Result<Vec<PartRecord>, rusqlite::Error> {
     let parts = {
@@ -127,7 +127,7 @@ fn take_upload(
 /// and the tags a write gives its new version (`put_object_tagged_if`,
 /// `complete_multipart_object_tagged`), in the same transaction as the row.
 fn write_object_tags(
-    tx: &rusqlite::Transaction,
+    tx: &Connection,
     bucket: &str,
     key: &str,
     version_id: &str,
@@ -153,7 +153,7 @@ fn write_object_tags(
 /// stand or fall with the object row (`complete_multipart_object`). Returns
 /// the overwritten object, whose blob the caller must delete after the commit.
 fn install_object(
-    tx: &rusqlite::Transaction,
+    tx: &Connection,
     record: &mut ObjectRecord,
     pre: &WritePrecondition,
 ) -> Result<Option<ObjectRecord>, CasError> {
@@ -386,15 +386,12 @@ impl MetadataStore for SqliteStore {
         let tags = tags.to_vec();
         let resource = format!("/{}/{}", record.bucket, record.key);
         let result = self
-            .conn
-            .call(move |conn| -> Result<_, CasError> {
-                let tx = conn.transaction()?;
-                let old = install_object(&tx, &mut record, &pre)?;
+            .write(move |tx| -> Result<_, CasError> {
+                let old = install_object(tx, &mut record, &pre)?;
                 if !tags.is_empty() {
                     let version_id = record.version_id.as_deref().unwrap_or("");
-                    write_object_tags(&tx, &record.bucket, &record.key, version_id, &tags)?;
+                    write_object_tags(tx, &record.bucket, &record.key, version_id, &tags)?;
                 }
-                tx.commit()?;
                 Ok((old, record.version_id.clone()))
             })
             .await;
@@ -531,13 +528,8 @@ impl MetadataStore for SqliteStore {
         let cluster_mode = self.cluster_mode();
         let resource = format!("/{bucket}/{key}");
         let result = self
-            .conn
-            .call(move |conn| -> Result<_, CasError> {
-                let tx = conn.transaction()?;
-                let deleted =
-                    delete_latest_in_tx(&tx, &bucket, &key, &pre, &marker_owner, cluster_mode)?;
-                tx.commit()?;
-                Ok(deleted)
+            .write(move |tx| -> Result<_, CasError> {
+                delete_latest_in_tx(tx, &bucket, &key, &pre, &marker_owner, cluster_mode)
             })
             .await;
         map_cas_result(result, "delete_object_if", &resource)
@@ -665,10 +657,10 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("get_object_version: {e}")))
     }
 
-    /// One transaction for the whole batch, so `DeleteObjects` costs one
-    /// commit (one WAL fsync with `[storage] fsync = true`) instead of one per
-    /// key. Each entry runs under its own savepoint: an entry that fails rolls
-    /// back alone and the others still commit.
+    /// One grouped write for the whole batch, so `DeleteObjects` costs at most
+    /// one commit (one WAL fsync with `[storage] fsync = true`) instead of one
+    /// per key. Each entry runs under its own nested savepoint: an entry that
+    /// fails rolls back alone and the others still commit.
     async fn delete_objects_if(
         &self,
         bucket: &str,
@@ -680,9 +672,7 @@ impl MetadataStore for SqliteStore {
         let marker_owner = marker_owner.to_string();
         let cluster_mode = self.cluster_mode();
         let outcome = self
-            .conn
-            .call(move |conn| -> Result<_, rusqlite::Error> {
-                let mut tx = conn.transaction()?;
+            .write(move |tx| -> Result<_, rusqlite::Error> {
                 let mut results = Vec::with_capacity(owned_entries.len());
                 for entry in &owned_entries {
                     // Dropped without commit, a savepoint rolls back.
@@ -700,7 +690,6 @@ impl MetadataStore for SqliteStore {
                     }
                     results.push(result);
                 }
-                tx.commit()?;
                 Ok(results)
             })
             .await;
@@ -740,13 +729,8 @@ impl MetadataStore for SqliteStore {
         let cluster_mode = self.cluster_mode();
         let resource = format!("/{bucket}/{key}?versionId={version_id}");
         let result = self
-            .conn
-            .call(move |conn| -> Result<_, CasError> {
-                let tx = conn.transaction()?;
-                let deleted =
-                    delete_version_in_tx(&tx, &bucket, &key, &version_id, &pre, cluster_mode)?;
-                tx.commit()?;
-                Ok(deleted)
+            .write(move |tx| -> Result<_, CasError> {
+                delete_version_in_tx(tx, &bucket, &key, &version_id, &pre, cluster_mode)
             })
             .await;
         map_cas_result(result, "delete_object_version_if", &resource)
@@ -1328,15 +1312,9 @@ impl MetadataStore for SqliteStore {
         let key = key.to_string();
         let version_id = version_id.to_string();
         let tags = tags.to_vec();
-        self.conn
-            .call(move |conn| {
-                let tx = conn.transaction()?;
-                write_object_tags(&tx, &bucket, &key, &version_id, &tags)?;
-                tx.commit()?;
-                Ok(())
-            })
+        self.write(move |tx| write_object_tags(tx, &bucket, &key, &version_id, &tags))
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("put_object_tags: {e}")))
+            .map_err(|e: WriteError<rusqlite::Error>| ArcaError::Internal(format!("put_object_tags: {e}")))
     }
 
     async fn delete_object_tags(
@@ -1348,16 +1326,15 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         let key = key.to_string();
         let version_id = version_id.to_string();
-        self.conn
-            .call(move |conn| {
-                let affected = conn.execute_cached(
+        self.write(move |tx| {
+                let affected = tx.execute_cached(
                     "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                     params![bucket, key, version_id],
                 )?;
                 Ok(affected > 0)
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object_tags: {e}")))
+            .map_err(|e: WriteError<rusqlite::Error>| ArcaError::Internal(format!("delete_object_tags: {e}")))
     }
 
     // -- Multipart upload operations --
@@ -1367,11 +1344,10 @@ impl MetadataStore for SqliteStore {
         record: &MultipartUploadRecord,
     ) -> Result<(), ArcaError> {
         let record = record.clone();
-        self.conn
-            .call(move |conn| {
+        self.write(move |tx| {
                 let metadata_json = serde_json::to_string(&record.metadata)
                     .unwrap_or_else(|_| "{}".to_string());
-                conn.execute_cached(
+                tx.execute_cached(
                     "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
@@ -1389,7 +1365,7 @@ impl MetadataStore for SqliteStore {
                 Ok(())
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("create_multipart_upload: {e}")))
+            .map_err(|e: WriteError<rusqlite::Error>| ArcaError::Internal(format!("create_multipart_upload: {e}")))
     }
 
     async fn get_multipart_upload(
@@ -1418,10 +1394,7 @@ impl MetadataStore for SqliteStore {
 
     async fn put_part(&self, part: &PartRecord) -> Result<Option<PartRecord>, ArcaError> {
         let part = part.clone();
-        self.conn
-            .call(move |conn| {
-                let tx = conn.transaction()?;
-
+        self.write(move |tx| {
                 // Check for existing part to return for cleanup.
                 let old = {
                     let mut stmt = tx.prepare_cached(
@@ -1435,7 +1408,7 @@ impl MetadataStore for SqliteStore {
                     match result {
                         Ok(rec) => Some(rec?),
                         Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                        Err(e) => return Err(e.into()),
+                        Err(e) => return Err(e),
                     }
                 };
 
@@ -1458,12 +1431,10 @@ impl MetadataStore for SqliteStore {
                         last_modified_str,
                     ],
                 )?;
-
-                tx.commit()?;
                 Ok(old)
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("put_part: {e}")))
+            .map_err(|e: WriteError<rusqlite::Error>| ArcaError::Internal(format!("put_part: {e}")))
     }
 
     async fn list_parts(&self, upload_id: &str) -> Result<Vec<PartRecord>, ArcaError> {
@@ -1509,10 +1480,7 @@ impl MetadataStore for SqliteStore {
         let tags = tags.to_vec();
         let resource = format!("/{}/{}", record.bucket, record.key);
         let result = self
-            .conn
-            .call(move |conn| -> Result<_, CasError> {
-                let tx = conn.transaction()?;
-
+            .write(move |tx| -> Result<_, CasError> {
                 // The upload must still exist: an abort that committed first
                 // deleted its parts, and an object installed now would point
                 // at them. All writes go through this one connection, so the
@@ -1526,13 +1494,12 @@ impl MetadataStore for SqliteStore {
                     return Err(CasError::Precondition(S3ErrorCode::NoSuchUpload));
                 }
 
-                let old = install_object(&tx, &mut record, &pre)?;
+                let old = install_object(tx, &mut record, &pre)?;
                 if !tags.is_empty() {
                     let version_id = record.version_id.as_deref().unwrap_or("");
-                    write_object_tags(&tx, &record.bucket, &record.key, version_id, &tags)?;
+                    write_object_tags(tx, &record.bucket, &record.key, version_id, &tags)?;
                 }
-                let parts = take_upload(&tx, &upload_id)?;
-                tx.commit()?;
+                let parts = take_upload(tx, &upload_id)?;
                 Ok(CompletedUpload {
                     old,
                     version_id: record.version_id.clone(),
@@ -1548,15 +1515,9 @@ impl MetadataStore for SqliteStore {
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, ArcaError> {
         let upload_id = upload_id.to_string();
-        self.conn
-            .call(move |conn| {
-                let tx = conn.transaction()?;
-                let parts = take_upload(&tx, &upload_id)?;
-                tx.commit()?;
-                Ok(parts)
-            })
+        self.write(move |tx| take_upload(tx, &upload_id))
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("delete_multipart_upload: {e}")))
+            .map_err(|e: WriteError<rusqlite::Error>| ArcaError::Internal(format!("delete_multipart_upload: {e}")))
     }
 
     async fn list_multipart_uploads(
@@ -2840,6 +2801,148 @@ mod tests {
         store.put_object(&make_record("b", "k")).await.unwrap();
         holder.join().unwrap();
         assert!(store.get_object("b", "k").await.unwrap().is_some());
+    }
+
+    // -- Group commit of the request-path writes --
+
+    use crate::sqlite::test_support::{commits, count_commits, hold_writer};
+
+    #[tokio::test]
+    async fn concurrent_puts_share_one_commit() {
+        let store = std::sync::Arc::new(test_store().await);
+        store.create_bucket("b").await.unwrap();
+        let count = count_commits(store.write_conn()).await;
+        let held = hold_writer(store.write_conn()).await;
+        let puts: Vec<_> = (0..10)
+            .map(|i| {
+                let store = store.clone();
+                tokio::spawn(async move { store.put_object(&make_record("b", &format!("k{i}"))).await })
+            })
+            .collect();
+        for put in puts {
+            put.await.unwrap().unwrap();
+        }
+        held.await.unwrap();
+        assert_eq!(commits(&count), 1);
+        assert_eq!(store.list_objects("b", None, None, 100).await.unwrap().len(), 10);
+    }
+
+    #[tokio::test]
+    async fn a_refused_precondition_fails_only_its_put_in_a_group() {
+        let store = std::sync::Arc::new(test_store().await);
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "taken")).await.unwrap();
+        let count = count_commits(store.write_conn()).await;
+        let held = hold_writer(store.write_conn()).await;
+        let put = |key: &'static str, pre: WritePrecondition| {
+            let store = store.clone();
+            tokio::spawn(async move { store.put_object_if(&make_record("b", key), &pre).await })
+        };
+        let first = put("k1", WritePrecondition::default());
+        let refused = put("taken", if_none_match_star());
+        let last = put("k2", WritePrecondition::default());
+        first.await.unwrap().unwrap();
+        expect_precondition_failed(&refused.await.unwrap().unwrap_err());
+        last.await.unwrap().unwrap();
+        held.await.unwrap();
+        assert_eq!(commits(&count), 1);
+        let keys: Vec<_> = store
+            .list_objects("b", None, None, 100)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|o| o.key)
+            .collect();
+        assert_eq!(keys, ["k1", "k2", "taken"]);
+    }
+
+    #[tokio::test]
+    async fn two_create_only_puts_of_one_key_in_a_group_let_exactly_one_win() {
+        let store = std::sync::Arc::new(test_store().await);
+        store.create_bucket("b").await.unwrap();
+        let held = hold_writer(store.write_conn()).await;
+        let put = |etag: &'static str| {
+            let store = store.clone();
+            tokio::spawn(async move {
+                let mut record = make_record("b", "k");
+                record.etag = etag.to_string();
+                store.put_object_if(&record, &if_none_match_star()).await
+            })
+        };
+        let a = put("etag-a");
+        let b = put("etag-b");
+        let a = a.await.unwrap();
+        let b = b.await.unwrap();
+        held.await.unwrap();
+        assert!(a.is_ok());
+        expect_precondition_failed(&b.unwrap_err());
+        assert_eq!(store.get_object("b", "k").await.unwrap().unwrap().etag, "etag-a");
+    }
+
+    #[tokio::test]
+    async fn cluster_seq_follows_the_order_of_a_group() {
+        let store = std::sync::Arc::new(cluster_store().await);
+        store.create_bucket("b").await.unwrap();
+        let held = hold_writer(store.write_conn()).await;
+        let puts: Vec<_> = (0..5)
+            .map(|i| {
+                let store = store.clone();
+                tokio::spawn(async move { store.put_object(&make_record("b", &format!("k{i}"))).await })
+            })
+            .collect();
+        for put in puts {
+            put.await.unwrap().unwrap();
+        }
+        held.await.unwrap();
+        let seqs: Vec<i64> = store
+            .write_conn()
+            .call(|c| {
+                let mut stmt = c.prepare("SELECT seq FROM objects WHERE bucket = 'b' ORDER BY key")?;
+                let seqs = stmt.query_map([], |r| r.get(0))?.collect::<Result<Vec<i64>, _>>()?;
+                Ok::<_, rusqlite::Error>(seqs)
+            })
+            .await
+            .unwrap();
+        assert!(seqs.windows(2).all(|w| w[0] < w[1]), "seq in submission order: {seqs:?}");
+    }
+
+    /// Every request-path write goes through the group committer: submitted
+    /// together, they all commit in one transaction.
+    #[tokio::test]
+    async fn every_request_path_write_joins_the_group() {
+        let store = std::sync::Arc::new(test_store().await);
+        upload_with_parts(&store).await;
+        store.create_multipart_upload(&make_upload("up-2", "b", "key2")).await.unwrap();
+        for key in ["del", "del-null", "batch", "tagged"] {
+            store.put_object(&make_record("b", key)).await.unwrap();
+        }
+        store.put_object_tags("b", "tagged", "", &[("a".into(), "1".into())]).await.unwrap();
+        let count = count_commits(store.write_conn()).await;
+        let held = hold_writer(store.write_conn()).await;
+
+        macro_rules! spawn {
+            ($store:ident => $call:expr) => {{
+                let $store = store.clone();
+                tokio::spawn(async move { $call.await.map(|_| ()) })
+            }};
+        }
+        let writes = vec![
+            spawn!(s => s.put_object_tagged_if(&make_record("b", "new"), &WritePrecondition::default(), &[("t".into(), "v".into())])),
+            spawn!(s => s.delete_object_if("b", "del", &DeletePrecondition::default(), "root")),
+            spawn!(s => s.delete_object_version_if("b", "del-null", "null", &DeletePrecondition::default())),
+            spawn!(s => async { s.delete_objects_if("b", &[batch_entry("batch", None, None)], "root").await.into_iter().collect::<Result<Vec<_>, _>>() }),
+            spawn!(s => s.complete_multipart_object_tagged("up-1", &make_record("b", "key1"), &WritePrecondition::default(), &[])),
+            spawn!(s => s.create_multipart_upload(&make_upload("up-3", "b", "key3"))),
+            spawn!(s => s.put_part(&make_part("up-2", 1))),
+            spawn!(s => s.delete_multipart_upload("up-2")),
+            spawn!(s => s.put_object_tags("b", "new", "", &[("x".into(), "y".into())])),
+            spawn!(s => s.delete_object_tags("b", "tagged", "")),
+        ];
+        for write in writes {
+            write.await.unwrap().unwrap();
+        }
+        held.await.unwrap();
+        assert_eq!(commits(&count), 1);
     }
 
     #[tokio::test]

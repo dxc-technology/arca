@@ -5,7 +5,7 @@ use arca_core::store::replication::{JournalEntry, JournalFilter, ReplicationStor
 use chrono::{DateTime, Utc};
 use rusqlite::params;
 
-use super::{CachedSql, SqliteStore, TrError};
+use super::{CachedSql, SqliteStore, TrError, WriteError};
 
 fn build_filter_clause(filter: &JournalFilter) -> (String, Vec<String>) {
     let mut conditions: Vec<String> = Vec::new();
@@ -68,9 +68,8 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<JournalEntry> {
 impl ReplicationStore for SqliteStore {
     async fn insert_journal_entry(&self, entry: &JournalEntry) -> Result<(), ArcaError> {
         let e = entry.clone();
-        self.conn
-            .call(move |conn| {
-                conn.execute_cached(
+        self.write(move |tx| {
+                tx.execute_cached(
                     "INSERT INTO replication_journal (
                         id, bucket, key, version_id, rule_id, event_type,
                         destination_endpoint, destination_bucket, status,
@@ -96,7 +95,7 @@ impl ReplicationStore for SqliteStore {
                 Ok(())
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("insert_journal_entry: {e}")))
+            .map_err(|e: WriteError<rusqlite::Error>| ArcaError::Internal(format!("insert_journal_entry: {e}")))
     }
 
     async fn claim_batch(&self, limit: u32) -> Result<Vec<JournalEntry>, ArcaError> {
@@ -346,6 +345,28 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    /// The journal entry of a request is written in the request-path write group.
+    #[tokio::test]
+    async fn concurrent_journal_inserts_share_one_commit() {
+        use crate::sqlite::test_support::{commits, count_commits, hold_writer};
+        let store = std::sync::Arc::new(SqliteStore::open_in_memory().await.unwrap());
+        let count = count_commits(store.write_conn()).await;
+        let held = hold_writer(store.write_conn()).await;
+        let inserts: Vec<_> = (0..5)
+            .map(|i| {
+                let store = store.clone();
+                tokio::spawn(async move {
+                    store.insert_journal_entry(&sample_entry("b", &format!("k{i}"), "pending")).await
+                })
+            })
+            .collect();
+        for insert in inserts {
+            insert.await.unwrap().unwrap();
+        }
+        held.await.unwrap();
+        assert_eq!(commits(&count), 1);
     }
 
     #[tokio::test]
