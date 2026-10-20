@@ -18,14 +18,14 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes, BytesMut};
 use futures_core::Stream;
 use md5::{Digest, Md5};
 use ring::aead::LessSafeKey;
 use tokio::task::JoinHandle;
 
 use super::format::{self, TAG_LEN};
-use super::keys::{build_nonce, decrypt_chunk, encrypt_chunk_in_place};
+use super::keys::{build_nonce, decrypt_chunk, decrypt_chunk_in_place, encrypt_chunk_in_place};
 
 /// How many `chunk_size`-sized chunks are coalesced into one `spawn_blocking`
 /// task by `EncryptingStream`. `1` disables batching. Higher values amortize
@@ -293,8 +293,9 @@ pub struct DecryptingStream {
     key: LessSafeKey,
     nonce_prefix: [u8; 4],
     chunk_index: u64,
-    /// Accumulation buffer for encrypted bytes.
-    buffer: Vec<u8>,
+    /// Accumulation buffer for encrypted bytes. Each complete chunk is split
+    /// off and decrypted in place, so its plaintext is yielded without a copy.
+    buffer: BytesMut,
     inner_done: bool,
 }
 
@@ -313,7 +314,7 @@ impl DecryptingStream {
             key,
             nonce_prefix,
             chunk_index: 0,
-            buffer: Vec::new(),
+            buffer: BytesMut::new(),
             inner_done: false,
         }
     }
@@ -335,16 +336,15 @@ impl DecryptingStream {
             return Ok(None);
         }
 
-        let ciphertext_and_tag = &self.buffer[4..on_disk_chunk_len];
+        let mut chunk = self.buffer.split_to(on_disk_chunk_len);
+        chunk.advance(4);
         let nonce = build_nonce(&self.nonce_prefix, self.chunk_index);
-        let plaintext = decrypt_chunk(&self.key, &nonce, ciphertext_and_tag)
+        let plaintext_len = decrypt_chunk_in_place(&self.key, &nonce, &mut chunk)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-        // Remove the consumed chunk from the buffer.
-        self.buffer.drain(..on_disk_chunk_len);
+        chunk.truncate(plaintext_len);
         self.chunk_index += 1;
 
-        Ok(Some(Bytes::from(plaintext)))
+        Ok(Some(chunk.freeze()))
     }
 }
 
@@ -798,6 +798,56 @@ mod tests {
         let decrypted = collect_stream(Box::pin(dec_stream)).await;
 
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[tokio::test]
+    async fn decrypt_fragments_spanning_several_chunks() {
+        let (dek, prefix) = test_dek_and_prefix();
+        let chunk_size = 16u32;
+        let plaintext: Vec<u8> = (0..200).map(|i| (i % 251) as u8).collect();
+        let stream = bytes_to_stream(&plaintext);
+
+        let enc_key = make_aead_key(&dek).unwrap();
+        let (enc_stream, _) = EncryptingStream::new(stream, enc_key, prefix, chunk_size);
+        let encrypted = collect_stream(Box::pin(enc_stream)).await;
+
+        // 45-byte fragments: each one holds more than one 36-byte on-disk
+        // chunk and ends in the middle of the next.
+        let cipher_data = &encrypted[format::HEADER_SIZE..];
+        let fragments: Vec<&[u8]> = cipher_data.chunks(45).collect();
+        let cipher_stream = multi_chunk_stream(fragments);
+        let dec_key = make_aead_key(&dek).unwrap();
+        let dec_stream = DecryptingStream::new(cipher_stream, dec_key, prefix);
+        let decrypted = collect_stream(Box::pin(dec_stream)).await;
+
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[tokio::test]
+    async fn decrypt_reads_of_one_on_disk_chunk_and_of_a_power_of_two() {
+        let (dek, prefix) = test_dek_and_prefix();
+        // Five full default chunks and a partial last one.
+        let plaintext: Vec<u8> = (0..(5 * DEFAULT_CHUNK_SIZE as usize + 1234))
+            .map(|i| (i % 253) as u8)
+            .collect();
+        let stream = bytes_to_stream(&plaintext);
+
+        let enc_key = make_aead_key(&dek).unwrap();
+        let (enc_stream, _) =
+            EncryptingStream::new(stream, enc_key, prefix, DEFAULT_CHUNK_SIZE);
+        let encrypted = collect_stream(Box::pin(enc_stream)).await;
+        let cipher_data = &encrypted[format::HEADER_SIZE..];
+
+        // Reads aligned to the on-disk chunk, and 64 KiB reads that straddle
+        // every chunk boundary.
+        for read_size in [format::full_on_disk_chunk_size() as usize, 64 * 1024] {
+            let fragments: Vec<&[u8]> = cipher_data.chunks(read_size).collect();
+            let cipher_stream = multi_chunk_stream(fragments);
+            let dec_key = make_aead_key(&dek).unwrap();
+            let dec_stream = DecryptingStream::new(cipher_stream, dec_key, prefix);
+            let decrypted = collect_stream(Box::pin(dec_stream)).await;
+            assert_eq!(decrypted, plaintext, "read size {read_size}");
+        }
     }
 
     // ----- Range decryption tests -----

@@ -253,7 +253,7 @@ sequenceDiagram
 3. The handler verifies the body digests against the stored blob (deleting it on a mismatch), writes the sidecar, then commits the metadata row through `put_object_tagged_if`, which evaluates the precondition, assigns the version id and stores the `x-amz-tagging` tags of that version in one transaction (see [Conditional writes](#conditional-writes)). CopyObject resolves the destination's tags (the request's under `REPLACE`, the source version's under `COPY`) before it writes, and CompleteMultipartUpload passes the tags given at CreateMultipartUpload, so no version is ever visible without its tags.
 4. `MetadataStore::put_object` and `put_object_if` return `(Option<ObjectRecord>, Option<String>)`: the record that was overwritten (so the caller can delete its now-orphaned blob, done in a background task) and the version id assigned to the new row.
 
-GetObject streams the blob back through the same stack (`ReaderStream` over the file, 64 KiB reads); range requests seek and limit the read.
+GetObject streams the blob back through the same stack (`ReaderStream` over the file, 64 KiB reads; an encrypted blob is read one whole on-disk chunk at a time and each chunk is decrypted in place); range requests seek and limit the read.
 
 ### Write order and crash consistency
 
@@ -412,7 +412,7 @@ The S3 protocol adapter is built on Axum instead of the [`s3s`](https://crates.i
 
 ### Streaming-first I/O
 
-No path buffers a whole object in memory: PutObject and UploadPart stream to disk while hashing, GetObject streams from the file, CopyObject streams source to destination, and the cluster transport streams blob bodies. CPU-heavy work (MD5, AEAD) runs on blocking threads so the async runtime keeps pulling network bytes.
+No path buffers a whole object in memory: PutObject and UploadPart stream to disk while hashing, GetObject streams from the file, CopyObject streams source to destination, and the cluster transport streams blob bodies. CPU-heavy work on the write path (MD5, AEAD encryption) runs on blocking threads so the async runtime keeps pulling network bytes; decryption on GET runs inline on the runtime, one 64 KiB chunk per poll.
 
 ### Copy is a real data copy
 

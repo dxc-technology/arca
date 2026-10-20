@@ -111,7 +111,14 @@ impl EncryptingBlobStore {
         // Stream the rest through DecryptingStream.
         let key = make_aead_key(&dek)
             .map_err(|e| ArcaError::Internal(format!("create AEAD key: {e}")))?;
-        let reader = tokio_util::io::ReaderStream::new(file);
+        // Every read is a round trip to tokio's blocking pool: read one whole
+        // on-disk chunk at a time (the default 4 KiB would be 16 per chunk).
+        // A fixed size, not the header's `chunk_size`, which is not trusted
+        // for an allocation.
+        let reader = tokio_util::io::ReaderStream::with_capacity(
+            file,
+            format::full_on_disk_chunk_size() as usize,
+        );
         let cipher_stream: ByteStream = Box::pin(reader);
         let dec_stream = DecryptingStream::new(cipher_stream, key, nonce_prefix);
 
