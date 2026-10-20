@@ -128,6 +128,14 @@ impl SqliteStore {
         let writer_pragmas = pragmas.clone();
         conn.call(move |conn| {
             conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE_CAPACITY);
+            // A DEFERRED transaction that reads before it writes asks for the
+            // WAL write lock as a read transaction, and SQLite then skips the
+            // busy handler: a reader holding that lock for an instant (it does
+            // when it reads a wal-index header being updated) failed the write
+            // at once with SQLITE_BUSY. IMMEDIATE takes the lock at BEGIN,
+            // where `busy_timeout` applies; this is the only writer, so it
+            // costs nothing.
+            conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
             conn.execute_batch(&writer_pragmas)?;
             migrations::run_migrations(conn)?;
             Ok(())

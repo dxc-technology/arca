@@ -2814,6 +2814,34 @@ mod tests {
         }
     }
 
+    /// A write transaction must wait out a WAL write lock held elsewhere for
+    /// `busy_timeout`, not fail at once. A reader briefly takes that lock when
+    /// it reads a wal-index header the writer is updating; a DEFERRED
+    /// transaction that reads before it writes is already a read transaction
+    /// when it asks for the lock, so SQLite skips the busy handler and the PUT
+    /// failed with "database is locked" under a heavy read load.
+    #[tokio::test]
+    async fn put_waits_for_a_write_lock_held_by_another_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("arca.db");
+        let store = SqliteStore::open(&path).await.unwrap();
+        store.create_bucket("b").await.unwrap();
+
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch("BEGIN IMMEDIATE").unwrap();
+            locked_tx.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            conn.execute_batch("COMMIT").unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        holder.join().unwrap();
+        assert!(store.get_object("b", "k").await.unwrap().is_some());
+    }
+
     #[tokio::test]
     async fn list_referenced_blob_ids_excludes_tombstones_includes_parts() {
         let store = test_store().await;
