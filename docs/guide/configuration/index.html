@@ -2140,12 +2140,12 @@
 </tr>
 <tr>
 <td><code>server.runtime.max_blocking_threads</code></td>
-<td><code>0</code> (= <code>num_cpus</code>)</td>
-<td>Size of tokio's blocking thread pool. AEAD chunk encryption runs here via <code>spawn_blocking</code>; capping at <code>num_cpus</code> avoids oversubscription on CPU-bound work.</td>
+<td><code>0</code> (= tokio's default, 512)</td>
+<td>Upper bound on tokio's blocking thread pool, which grows on demand up to it. Every file operation (<code>tokio::fs</code>) and the AEAD chunk encryption of a PUT run there.</td>
 </tr>
 </tbody>
 </table>
-<p>The defaults are sized for the AEAD pipeline (one blocking thread per core for crypto). Increase <code>max_blocking_threads</code> if you observe contention with other blocking operations (e.g., legacy SQLite read pool).</p>
+<p>Leave <code>max_blocking_threads</code> at its default unless you have measured a reason to change it: a low cap (for example <code>num_cpus</code>) limits how many file operations can run at once, so concurrent small GETs and PUTs queue behind each other.</p>
 <h3 id="http2">HTTP/2<a class="headerlink" href="#http2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2416,9 +2416,9 @@
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="c1"># bucket_cache_size = 1000</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># object_cache_size = 10000</span>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1"># [server.runtime]            # optional, defaults to num_cpus</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1"># [server.runtime]            # optional</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># worker_threads = 0           # 0 = num_cpus</span>
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="c1"># max_blocking_threads = 0     # 0 = num_cpus</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="c1"># max_blocking_threads = 0     # 0 = tokio&#39;s default (512)</span>
 <a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
 <a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="c1"># [server.http]               # optional, defaults shown</span>
 <a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="c1"># h2_max_concurrent_streams = 200</span>

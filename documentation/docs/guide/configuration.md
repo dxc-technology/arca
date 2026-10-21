@@ -96,9 +96,9 @@ When a rate limit is exceeded, the server returns HTTP 503 with S3 error code `S
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `server.runtime.worker_threads` | `0` (= `num_cpus`) | Number of tokio worker threads. Set explicitly when pinning to a CPU subset (e.g., container with `cpus=4`). |
-| `server.runtime.max_blocking_threads` | `0` (= `num_cpus`) | Size of tokio's blocking thread pool. AEAD chunk encryption runs here via `spawn_blocking`; capping at `num_cpus` avoids oversubscription on CPU-bound work. |
+| `server.runtime.max_blocking_threads` | `0` (= tokio's default, 512) | Upper bound on tokio's blocking thread pool, which grows on demand up to it. Every file operation (`tokio::fs`) and the AEAD chunk encryption of a PUT run there. |
 
-The defaults are sized for the AEAD pipeline (one blocking thread per core for crypto). Increase `max_blocking_threads` if you observe contention with other blocking operations (e.g., legacy SQLite read pool).
+Leave `max_blocking_threads` at its default unless you have measured a reason to change it: a low cap (for example `num_cpus`) limits how many file operations can run at once, so concurrent small GETs and PUTs queue behind each other.
 
 ### HTTP/2
 
@@ -192,9 +192,9 @@ port = 9000
 # bucket_cache_size = 1000
 # object_cache_size = 10000
 
-# [server.runtime]            # optional, defaults to num_cpus
+# [server.runtime]            # optional
 # worker_threads = 0           # 0 = num_cpus
-# max_blocking_threads = 0     # 0 = num_cpus
+# max_blocking_threads = 0     # 0 = tokio's default (512)
 
 # [server.http]               # optional, defaults shown
 # h2_max_concurrent_streams = 200

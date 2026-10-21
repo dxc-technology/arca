@@ -41,22 +41,22 @@ pub struct ServerConfig {
     /// In-memory metadata cache configuration.
     pub cache: Option<CacheConfig>,
     /// Tokio runtime configuration (worker threads, blocking pool size).
-    /// Read at startup before the runtime is built. Defaults to num_cpus.
+    /// Read at startup before the runtime is built. Defaults to tokio's own.
     pub runtime: Option<RuntimeConfig>,
     /// HTTP/2 server configuration (per-connection stream limits and windows).
     pub http: Option<HttpConfig>,
 }
 
 /// Tokio runtime configuration. All fields are optional; `0` (or absent)
-/// means "use num_cpus".
+/// means "use tokio's default".
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RuntimeConfig {
     /// Number of tokio worker threads. `0` (default) = num_cpus.
     #[serde(default)]
     pub worker_threads: usize,
-    /// Maximum threads in the blocking pool. `0` (default) = num_cpus.
-    /// Setting this equal to num_cpus is intentional when AEAD is offloaded
-    /// via spawn_blocking — keeps the CPU-bound pool from oversubscribing.
+    /// Maximum threads in the blocking pool. `0` (default) = tokio's own
+    /// default (512): the pool grows on demand, and every `tokio::fs` call
+    /// runs there, so a low cap queues concurrent file I/O.
     #[serde(default)]
     pub max_blocking_threads: usize,
 }
