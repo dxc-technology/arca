@@ -185,7 +185,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 1394 | arca-auth: 47, arca-core: 285, arca-proto: 207, arca-server: 403, arca-storage: 452 |
+| Unit tests (Rust) | 1404 | arca-auth: 47, arca-core: 285, arca-proto: 207, arca-server: 403, arca-storage: 462 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — Conditional Writes (CAS) | 15 | sequential If-Match/If-None-Match/CompleteMultipartUpload/DeleteObject preconditions, N=8 racing writers under barrier release (exactly one winner, every run), conditional DELETE racing an unconditional overwrite (never destroys the newer object), DeleteObjects batch precondition checked against the targeted version, not the bucket's latest |
 | Integration — Multipart abort race | 3 | abort after complete leaves the object readable, complete after abort fails and writes nothing, and an abort swept across the whole life of a Complete (whoever wins, a completed object always reads back intact); also run against PostgreSQL |
@@ -233,7 +233,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
 | **Arca tests** | **2,641** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 385 pass, 349 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **3,466** | |
+| **Total** | **3,476** | |
 
 ## License
 

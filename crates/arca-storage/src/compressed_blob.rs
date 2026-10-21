@@ -22,7 +22,7 @@ use arca_core::store::{
 use arca_core::types::BlobId;
 
 use crate::compression::auto::pick_auto;
-use crate::compression::format::{FOOTER_COUNT_SIZE, HEADER_SIZE};
+use crate::compression::format::FOOTER_COUNT_SIZE;
 use crate::compression::stream::{
     chunk_disk_offset, decompress_range, CompressingStream, DecompressingStream,
 };
@@ -235,49 +235,13 @@ impl CompressingBlobStore {
             });
         }
 
-        // Read the whole compressed region (sans header and footer) via the
-        // inner store so encryption (if any) layers unwrap first.
-        let file_size = info.compressed_size;
-        let footer_count_offset = file_size.saturating_sub(FOOTER_COUNT_SIZE as u64);
-        // Fetch footer count first to know full footer size.
-        let count_bytes = self
-            .inner
-            .get_known(
-                blob_id,
-                Some(ByteRange {
-                    start: footer_count_offset,
-                    end: Some(file_size - 1),
-                }),
-                sidecar,
-            )
-            .await?;
-        let count_buf = collect_stream(count_bytes.stream).await?;
-        if count_buf.len() != FOOTER_COUNT_SIZE {
-            return Err(ArcaError::Internal("compressed footer count truncated".into()));
-        }
-        let n = u32::from_le_bytes([count_buf[0], count_buf[1], count_buf[2], count_buf[3]]) as u64;
-        let index_bytes = n * 4;
-        let footer_start = footer_count_offset - index_bytes;
-
-        if footer_start < HEADER_SIZE as u64 {
-            return Err(ArcaError::Internal(
-                "compressed footer overlaps header".into(),
-            ));
-        }
-
-        // Read the data region [HEADER_SIZE .. footer_start).
-        let data = self
-            .inner
-            .get_known(
-                blob_id,
-                Some(ByteRange {
-                    start: HEADER_SIZE as u64,
-                    end: Some(footer_start - 1),
-                }),
-                sidecar,
-            )
-            .await?;
-        let dec_stream = DecompressingStream::new(data.stream, info.algorithm);
+        // One read of the whole stored blob through the inner store (so
+        // encryption, if any, unwraps first). The sidecar's plaintext size
+        // says where the chunks end, so the footer needs no read of its own:
+        // a GET opens the file once, which is what a small GET is made of.
+        let data = self.inner.get_known(blob_id, None, sidecar).await?;
+        let dec_stream =
+            DecompressingStream::whole_blob(data.stream, info.algorithm, info.original_size);
 
         let _ = plaintext_size; // informational; content_length set from sidecar below.
         Ok(BlobGetResult {
@@ -530,6 +494,7 @@ impl BlobStore for CompressingBlobStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compression::format::HEADER_SIZE;
     use crate::SqliteStore;
     use std::collections::HashMap;
     use tokio_stream::iter as stream_iter;

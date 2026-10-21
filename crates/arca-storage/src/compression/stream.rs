@@ -4,8 +4,8 @@
 //! fixed-size plaintext chunks, compresses each chunk with the configured
 //! algorithm, and yields the framed output (header + chunks + footer).
 //!
-//! `DecompressingStream` wraps a compressed byte stream, parses the header
-//! once, then decodes each chunk and yields the plaintext.
+//! `DecompressingStream` decodes framed chunks back to plaintext, either from
+//! a bare data region or from a whole stored blob in one pass.
 //!
 //! Range reads use `decompress_range` against a concrete byte slab already
 //! read from disk (analogous to the encryption engine).
@@ -22,7 +22,8 @@ use md5::{Digest, Md5};
 
 use super::codec::{compress_chunk, decompress_chunk};
 use super::format::{
-    self, write_chunk_header, write_footer, write_header, CHUNK_LEN_HEADER, HEADER_SIZE,
+    self, write_chunk_header, write_footer, write_header, CHUNK_LEN_HEADER, FOOTER_COUNT_SIZE,
+    HEADER_SIZE,
 };
 
 /// Plaintext statistics captured during compression.
@@ -181,24 +182,35 @@ impl Stream for CompressingStream {
     }
 }
 
-/// Decompressing stream that wraps a framed compressed byte stream
-/// (header, chunks, footer — but the footer bytes at the tail are simply
-/// rejected as "extra" chunks because their first 8 bytes look like a
-/// chunk header with a giant compressed_len). So we strip the footer
-/// out-of-band: the caller uses `DecompressingStream` only when the footer
-/// has been removed, or when the caller knows a stop condition.
+/// Decompressing stream over framed chunks.
 ///
-/// For simplicity, in the full-read path we read chunks until we see a
-/// chunk header with plaintext_len == 0 and compressed_len == 0, which
-/// never happens naturally, AND we track bytes against the known file
-/// size minus footer length. Since that's awkward, the `CompressingBlobStore`
-/// reads the footer first, derives the data region, and feeds only that
-/// region here.
+/// Two modes:
+///
+/// - [`DecompressingStream::new`] decodes a bare data region: the caller
+///   has stripped the header and the footer (it read the footer to find
+///   where the chunks end).
+/// - [`DecompressingStream::whole_blob`] decodes a whole blob as stored
+///   (header, chunks, footer) in one pass, with no footer read up front:
+///   the plaintext size from the sidecar says where the chunks end. The
+///   header must match the algorithm, and what follows the last chunk must
+///   be exactly the footer those chunks imply, so a truncated or corrupted
+///   blob is an error rather than a short read.
 pub struct DecompressingStream {
     inner: Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>,
     algorithm: CompressionAlgorithm,
     buffer: Vec<u8>,
     inner_done: bool,
+    finished: bool,
+    whole: Option<WholeBlob>,
+}
+
+/// State of a whole-blob decode beyond the chunks themselves.
+struct WholeBlob {
+    header_checked: bool,
+    /// Plaintext bytes still expected.
+    remaining: u64,
+    /// On-disk length of each decoded chunk, to rebuild the expected footer.
+    chunk_lens: Vec<u32>,
 }
 
 impl DecompressingStream {
@@ -211,10 +223,52 @@ impl DecompressingStream {
             algorithm,
             buffer: Vec::new(),
             inner_done: false,
+            finished: false,
+            whole: None,
         }
     }
 
+    /// Decodes a whole stored blob that holds `plaintext_len` bytes.
+    pub fn whole_blob(
+        inner: Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>,
+        algorithm: CompressionAlgorithm,
+        plaintext_len: u64,
+    ) -> Self {
+        let mut stream = Self::new(inner, algorithm);
+        stream.whole = Some(WholeBlob {
+            header_checked: false,
+            remaining: plaintext_len,
+            chunk_lens: Vec::new(),
+        });
+        stream
+    }
+
     fn try_decode_chunk(&mut self) -> Result<Option<Bytes>, io::Error> {
+        if let Some(whole) = self.whole.as_mut() {
+            if !whole.header_checked {
+                if self.buffer.len() < HEADER_SIZE {
+                    return Ok(None);
+                }
+                let (algorithm, _chunk_size) = format::parse_header(&self.buffer[..HEADER_SIZE])
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                if algorithm != self.algorithm {
+                    return Err(invalid_data(format!(
+                        "compression header says {algorithm:?}, expected {:?}",
+                        self.algorithm
+                    )));
+                }
+                self.buffer.drain(..HEADER_SIZE);
+                whole.header_checked = true;
+            }
+            if whole.remaining == 0 {
+                // Only the footer is left: it is checked at the end of input.
+                let footer_len = whole.chunk_lens.len() * 4 + FOOTER_COUNT_SIZE;
+                if self.buffer.len() > footer_len {
+                    return Err(invalid_data("unexpected data after the last compressed chunk"));
+                }
+                return Ok(None);
+            }
+        }
         if self.buffer.len() < CHUNK_LEN_HEADER {
             return Ok(None);
         }
@@ -223,6 +277,11 @@ impl DecompressingStream {
         let total = CHUNK_LEN_HEADER + compressed_len as usize;
         if self.buffer.len() < total {
             return Ok(None);
+        }
+        if let Some(whole) = self.whole.as_ref() {
+            if plaintext_len as u64 > whole.remaining {
+                return Err(invalid_data("compressed chunks exceed the object size"));
+            }
         }
         let compressed = &self.buffer[CHUNK_LEN_HEADER..total];
         let decoded = decompress_chunk(self.algorithm, compressed, plaintext_len as usize)
@@ -238,8 +297,32 @@ impl DecompressingStream {
             ));
         }
         self.buffer.drain(..total);
+        if let Some(whole) = self.whole.as_mut() {
+            whole.remaining -= plaintext_len as u64;
+            whole.chunk_lens.push(total as u32);
+        }
         Ok(Some(Bytes::from(decoded)))
     }
+
+    /// Checks what is left once the input has ended.
+    fn finish(&mut self) -> Result<(), io::Error> {
+        let leftover = std::mem::take(&mut self.buffer);
+        match self.whole.as_ref() {
+            None if leftover.is_empty() => Ok(()),
+            None => Err(invalid_data("truncated compressed chunk")),
+            Some(whole) if !whole.header_checked || whole.remaining > 0 => {
+                Err(invalid_data("truncated compressed blob"))
+            }
+            Some(whole) if leftover != write_footer(&whole.chunk_lens) => {
+                Err(invalid_data("compressed footer does not match its chunks"))
+            }
+            Some(_) => Ok(()),
+        }
+    }
+}
+
+fn invalid_data(msg: impl Into<String>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, msg.into())
 }
 
 impl Stream for DecompressingStream {
@@ -247,50 +330,29 @@ impl Stream for DecompressingStream {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-
-        match this.try_decode_chunk() {
-            Ok(Some(bytes)) => return Poll::Ready(Some(Ok(bytes))),
-            Ok(None) => {}
-            Err(e) => return Poll::Ready(Some(Err(e))),
+        if this.finished {
+            return Poll::Ready(None);
         }
-
-        if this.inner_done {
-            if this.buffer.is_empty() {
-                return Poll::Ready(None);
-            }
-            return Poll::Ready(Some(Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "truncated compressed chunk",
-            ))));
-        }
-
         loop {
+            match this.try_decode_chunk() {
+                Ok(Some(bytes)) => return Poll::Ready(Some(Ok(bytes))),
+                Ok(None) => {}
+                Err(e) => {
+                    this.finished = true;
+                    return Poll::Ready(Some(Err(e)));
+                }
+            }
+            if this.inner_done {
+                this.finished = true;
+                return Poll::Ready(this.finish().err().map(Err));
+            }
             match this.inner.as_mut().poll_next(cx) {
-                Poll::Ready(Some(Ok(chunk))) => {
-                    this.buffer.extend_from_slice(&chunk);
-                    match this.try_decode_chunk() {
-                        Ok(Some(bytes)) => return Poll::Ready(Some(Ok(bytes))),
-                        Ok(None) => {}
-                        Err(e) => return Poll::Ready(Some(Err(e))),
-                    }
+                Poll::Ready(Some(Ok(chunk))) => this.buffer.extend_from_slice(&chunk),
+                Poll::Ready(Some(Err(e))) => {
+                    this.finished = true;
+                    return Poll::Ready(Some(Err(e)));
                 }
-                Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e))),
-                Poll::Ready(None) => {
-                    this.inner_done = true;
-                    match this.try_decode_chunk() {
-                        Ok(Some(bytes)) => return Poll::Ready(Some(Ok(bytes))),
-                        Ok(None) => {
-                            if this.buffer.is_empty() {
-                                return Poll::Ready(None);
-                            }
-                            return Poll::Ready(Some(Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "truncated compressed chunk",
-                            ))));
-                        }
-                        Err(e) => return Poll::Ready(Some(Err(e))),
-                    }
-                }
+                Poll::Ready(None) => this.inner_done = true,
                 Poll::Pending => return Poll::Pending,
             }
         }
@@ -421,6 +483,119 @@ mod tests {
         let dec = DecompressingStream::new(bytes_to_stream(data_region), CompressionAlgorithm::Zstd);
         let decoded = collect(Box::pin(dec)).await;
         assert_eq!(decoded, data);
+    }
+
+    /// Feeds `data` in `piece`-byte slices, the way a file reader may split it.
+    fn pieces_to_stream(data: &[u8], piece: usize) -> TestStream {
+        let items: Vec<Result<Bytes, io::Error>> =
+            data.chunks(piece).map(|c| Ok(Bytes::copy_from_slice(c))).collect();
+        Box::pin(stream_iter(items))
+    }
+
+    /// Decodes a whole blob, returning the plaintext or the first error.
+    async fn decode_whole(
+        stream: TestStream,
+        algorithm: CompressionAlgorithm,
+        plaintext_len: u64,
+    ) -> Result<Vec<u8>, io::Error> {
+        let dec = DecompressingStream::whole_blob(stream, algorithm, plaintext_len);
+        let mut s = std::pin::pin!(dec);
+        let mut buf = Vec::new();
+        while let Some(c) = s.as_mut().next().await {
+            buf.extend_from_slice(&c?);
+        }
+        Ok(buf)
+    }
+
+    #[tokio::test]
+    async fn whole_blob_roundtrip() {
+        let data: Vec<u8> = (0..5000).map(|i| (i % 251) as u8).collect();
+        for alg in [CompressionAlgorithm::Zstd, CompressionAlgorithm::Lz4] {
+            let encoded = compress_bytes(alg, 1024, &data).await;
+            let got = decode_whole(bytes_to_stream(&encoded), alg, data.len() as u64).await;
+            assert_eq!(got.unwrap(), data, "{alg:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn whole_blob_roundtrip_in_small_pieces() {
+        let data: Vec<u8> = (0..5000).map(|i| (i % 251) as u8).collect();
+        let encoded = compress_bytes(CompressionAlgorithm::Zstd, 1024, &data).await;
+        for piece in [1, 3, 9, 1000] {
+            let got = decode_whole(
+                pieces_to_stream(&encoded, piece),
+                CompressionAlgorithm::Zstd,
+                data.len() as u64,
+            )
+            .await;
+            assert_eq!(got.unwrap(), data, "piece size {piece}");
+        }
+    }
+
+    #[tokio::test]
+    async fn whole_blob_empty_plaintext() {
+        let encoded = compress_bytes(CompressionAlgorithm::Zstd, 1024, b"").await;
+        let got = decode_whole(bytes_to_stream(&encoded), CompressionAlgorithm::Zstd, 0).await;
+        assert!(got.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn whole_blob_rejects_a_bad_header() {
+        let data = b"some plaintext to compress".to_vec();
+        let mut encoded = compress_bytes(CompressionAlgorithm::Zstd, 1024, &data).await;
+        let len = data.len() as u64;
+        let wrong_alg =
+            decode_whole(bytes_to_stream(&encoded), CompressionAlgorithm::Lz4, len).await;
+        assert!(wrong_alg.is_err());
+        encoded[0] = b'X';
+        let bad_magic =
+            decode_whole(bytes_to_stream(&encoded), CompressionAlgorithm::Zstd, len).await;
+        assert!(bad_magic.is_err());
+    }
+
+    #[tokio::test]
+    async fn whole_blob_rejects_a_truncated_blob() {
+        let data: Vec<u8> = (0..5000).map(|i| (i % 251) as u8).collect();
+        let encoded = compress_bytes(CompressionAlgorithm::Zstd, 1024, &data).await;
+        let len = data.len() as u64;
+        // Cut inside the header, inside a chunk, and inside the footer.
+        for cut in [4, HEADER_SIZE + 20, encoded.len() - 2] {
+            let got = decode_whole(
+                bytes_to_stream(&encoded[..cut]),
+                CompressionAlgorithm::Zstd,
+                len,
+            )
+            .await;
+            assert!(got.is_err(), "cut at {cut} must fail");
+        }
+    }
+
+    #[tokio::test]
+    async fn whole_blob_rejects_a_footer_that_does_not_match() {
+        let data: Vec<u8> = (0..5000).map(|i| (i % 251) as u8).collect();
+        let encoded = compress_bytes(CompressionAlgorithm::Zstd, 1024, &data).await;
+        let len = data.len() as u64;
+
+        let mut wrong_index = encoded.clone();
+        let index_start = encoded.len() - format::FOOTER_COUNT_SIZE - 5 * 4;
+        wrong_index[index_start] ^= 0xff;
+        let got = decode_whole(bytes_to_stream(&wrong_index), CompressionAlgorithm::Zstd, len);
+        assert!(got.await.is_err());
+
+        let mut trailing = encoded.clone();
+        trailing.extend_from_slice(&[0u8; 16]);
+        let got = decode_whole(bytes_to_stream(&trailing), CompressionAlgorithm::Zstd, len);
+        assert!(got.await.is_err());
+    }
+
+    #[tokio::test]
+    async fn whole_blob_rejects_a_size_that_does_not_match() {
+        let data: Vec<u8> = (0..5000).map(|i| (i % 251) as u8).collect();
+        let encoded = compress_bytes(CompressionAlgorithm::Zstd, 1024, &data).await;
+        for len in [4999u64, 5001, 4096, 0] {
+            let got = decode_whole(bytes_to_stream(&encoded), CompressionAlgorithm::Zstd, len);
+            assert!(got.await.is_err(), "declared size {len} must fail");
+        }
     }
 
     #[tokio::test]
