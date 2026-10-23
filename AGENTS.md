@@ -1,381 +1,160 @@
 # AGENTS.md
 
-This file provides guidance to coding agents (Claude Code and any other AGENTS.md-aware tool) when working with code in this repository.
+Guidance for coding agents (Claude Code and any other AGENTS.md-aware tool) working in this repository. This file holds the rules that always apply; task-specific procedures live elsewhere and **must be read before starting the task**:
+
+| Before you... | Read |
+|---|---|
+| work on a tech debt item, or touch code carrying a `TECHDEBT(TD-XXX)` marker | that item in `TECH_DEBT.md` |
+| work on the next roadmap step, or complete a phase | `documentation/docs/roadmap.md` |
+| add or upgrade a dependency | `DEVELOPMENT.md` → Dependency licence audit |
+| add a test mode, a suite needing a mode's own services, or a port in a compose overlay | `DEVELOPMENT.md` → Self-contained test modes |
+| bump a base image or a package pin in a Dockerfile | `DEVELOPMENT.md` → Base Image Pinning and Upgrades |
+| touch image tags, labels or the publish pipeline | `DEVELOPMENT.md` → Published Container Images |
+| add or change a console feature | `DEVELOPMENT.md` → Console documentation and screenshots |
+| make a release or bump the version | `RELEASING.md` |
+| change architecture or HA behaviour | `documentation/docs/reference/architecture.md`, `ha-design-decisions.md` |
+| run or analyse performance tests | `documentation/docs/operations/performance.md` |
 
 ## Project
 
-Arca is an open source S3-compatible object storage server written in Rust. It is designed as a drop-in replacement for AWS S3, MinIO, and other S3-compatible storage services. It runs single-node or as a symmetric HA cluster, with SQLite or PostgreSQL metadata. Licensed under AGPL-3.0-or-later.
+Arca is an open source S3-compatible object storage server in Rust, a drop-in replacement for AWS S3, MinIO and other S3-compatible services. Single-node or symmetric HA cluster, SQLite or PostgreSQL metadata. AGPL-3.0-or-later.
 
-The architecture is documented in `documentation/docs/reference/architecture.md`; the HA design decisions cited in code as "decision H<n>" are in `documentation/docs/reference/ha-design-decisions.md`.
+Architecture: `documentation/docs/reference/architecture.md`; HA decisions cited in code as "decision H<n>": `documentation/docs/reference/ha-design-decisions.md`.
 
 ## Dependency Licensing Policy (HARD CONSTRAINT)
 
-Arca's own license (AGPL-3.0-or-later) does not exempt its dependencies: a copyleft dependency (GPL/AGPL/LGPL/MPL/SSPL/CDDL/EPL/OSL) anywhere in the transitive tree would stack extra source-disclosure or network-copyleft obligations, beyond AGPL's own, onto every user of Arca. To keep the license surface simple and predictable for anyone consuming Arca:
+A copyleft dependency anywhere in the transitive tree would stack extra obligations, beyond AGPL's own, onto every user of Arca.
 
-- **Only permissively licensed dependencies are allowed**, transitively down to the leaves: MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib, BSL-1.0, Unicode-3.0, CC0-1.0, 0BSD, MIT-0, CDLA-Permissive-2.0, Unlicense, and equivalents.
-- **Copyleft is forbidden** — no GPL, AGPL, LGPL, MPL, SSPL, CDDL, EPL, or OSL, direct or transitive. A crate multi-licensed with `OR` is acceptable **only if** it always offers a permissive option (e.g. `Apache-2.0 OR LGPL-2.1-or-later OR MIT` is fine because Apache-2.0/MIT can be chosen).
-- **Before adding or upgrading any dependency**, run the full transitive audit in a container and confirm zero copyleft:
-  ```bash
-  docker run --rm -v "$PWD":/work -w /work rust:alpine sh -c \
-    'apk add --no-cache musl-dev >/dev/null; cargo install cargo-license >/dev/null; \
-     cargo license --all-features --tsv' \
-    | awk -F"\t" "NR>1{print \$5}" | grep -wiE "GPL|AGPL|LGPL|MPL-|SSPL|CDDL|EPL|OSL"
-  # must print nothing (an OR-with-permissive-option match must be reviewed by hand)
-  ```
-- If a needed capability is only available under a copyleft license, **STOP and ask Pietro** before pulling it in — do not add it on your own initiative.
-- After any dependency change, **regenerate `THIRD-PARTY-NOTICES`** so the attribution file stays in sync (config in `about.toml` / `about.hbs`). The `cargo-about` binary is gated behind the `cli` feature, so the install must pass `--features cli`:
-  ```bash
-  docker run --rm -v "$PWD":/work -w /work rust:alpine sh -c \
-    'apk add --no-cache build-base perl; cargo install cargo-about --features cli; \
-     cargo about generate --all-features about.hbs -o THIRD-PARTY-NOTICES.md'
-  ```
+- **Only permissive licences**, transitively down to the leaves: MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib, BSL-1.0, Unicode-3.0, CC0-1.0, 0BSD, MIT-0, CDLA-Permissive-2.0, Unlicense, and equivalents.
+- **Copyleft is forbidden** (GPL, AGPL, LGPL, MPL, SSPL, CDDL, EPL, OSL), direct or transitive. An `OR` multi-licence is fine **only if** it always offers a permissive option.
+- **Before adding or upgrading any dependency**, run the transitive audit, and after any dependency change regenerate `THIRD-PARTY-NOTICES.md` (commands in `DEVELOPMENT.md`).
+- If a capability is only available under copyleft, **STOP and ask Pietro**.
 
 ## Language
 
-Arca is an international project: **everything committed to the repository must be in English** — code, comments, documentation, commit messages, and any planning or review document. Conversations with Pietro may happen in Italian, but no Italian may end up in tracked files.
+**Everything committed must be in English**: code, comments, docs, commit messages, plans, reviews. Conversations with Pietro may be in Italian; no Italian in tracked files.
 
 ## Build & Test
 
-All development happens inside Docker containers — never install libraries on the host.
+All development happens inside Docker containers, never install libraries on the host. `bin/` scripts fully abstract Docker Compose; all builds go through `bin/build`.
 
-Convenience scripts live in `bin/`. They fully abstract Docker Compose, so the user never needs to interact with compose directly. All build operations go through `bin/build`.
-
-**Plugin system**: Features (TLS, encryption, KMS) are composable via `--flags`. Each feature has a config fragment in `config/fragments/` and an optional compose overlay in `docker/`. The shared library `bin/lib/compose.sh` handles config generation (TOML concatenation) and compose command building. Adding a new feature = 1 fragment + a few lines in the library.
+**Plugin system**: features (TLS, encryption, KMS) compose via `--flags`. Each has a config fragment in `config/fragments/` and an optional overlay in `docker/`; `bin/lib/compose.sh` concatenates the TOML and builds the compose command. New feature = 1 fragment + a few lines in the library.
 
 ```bash
-# Build
-bin/build                        # build Docker image
-bin/build --dev                  # build development image (has shell)
-bin/build --console              # build console image
-bin/build --binary               # extract Linux binary to build/arca-<arch>
-bin/build --binary --arch amd64  # cross-compile for x86_64
+bin/build [--dev|--console]      # production / development (has shell) / console image
+bin/build --binary [--arch amd64]  # extract (cross-compiled) Linux binary to build/arca-<arch>
 bin/build --push                 # publish the release at HEAD to ghcr.io (fallback; CI does it)
-bin/release vX.Y.Z               # create the GitHub release (notes from CHANGELOG, preview, y/n)
+bin/release vX.Y.Z               # create the GitHub release
 
-# Run
-bin/arca start -d                # start server in background
-bin/arca start -d --build --dev  # rebuild dev image and start
-bin/arca start -d --release latest  # run the published (public) image: pull, never build
-                                 # (also bin/console start --release, bin/cluster up --release);
-                                 # plain `start` runs the existing image, else pulls latest (--dev: builds)
-bin/arca start -d --tls          # start with TLS (your certs in ./certs/, else a local CA in certs/local)
-bin/arca start -d --encryption   # start with encryption (SSE-S3)
-bin/arca start -d --kms          # start with OpenBAO KMS
-bin/arca start -d --tls --kms    # combine features freely
-bin/arca start -d --config <path>  # custom config (escape hatch)
-bin/arca stop                    # stop server + all associated services
-bin/arca status                  # show container status
-bin/arca logs -f                 # follow server logs
+bin/arca start -d [--build --dev] [--tls] [--encryption] [--kms] [--config <path>]
+                                 # --tls: certs in ./certs/, else a local CA in certs/local
+bin/arca start -d --release latest  # run the published image: pull, never build
+                                 # (also bin/console start --release, bin/cluster up --release)
+bin/arca stop | status | logs -f
+bin/console start -d [--build] | stop   # inherits features from running Arca via .arca-env
 
-# Console (inherits features from running Arca via .arca-env)
-bin/console start -d             # start console
-bin/console start -d --build     # rebuild and start
-bin/console stop                 # stop console
+bin/test                 # unit + integration
+bin/test full            # unit, integration, notifications, replication, cluster
+bin/test unit [-p CRATE] # extra args go to cargo test
+bin/test integration     # against the running server as started; .arca-env enables encryption/KMS suites
+bin/test tls | tls-permissions | encryption | per-bucket-encryption | virtual-host | kms
+bin/test cluster | replication | notifications     # self-contained
+bin/test scripts | s3-report | perf-report         # no server needed
 
-# Tests
-bin/test                 # run unit + integration tests
-bin/test full            # unit, integration, notifications, replication and cluster, each its own stage
-bin/test unit            # unit tests only
-bin/test integration     # integration tests against the running server, as started (never recreated);
-                         # .arca-env's features enable the encryption/per-bucket/KMS suites
-bin/test unit -p arca-core   # pass extra args to cargo test
-bin/test tls             # TLS integration tests (self-contained)
-bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)
-bin/test scripts         # bin/lib shell library tests (tests/scripts/*_test.sh, docker mocked)
-bin/test s3-report       # Ceph report generator tests (docker/s3-tests/report_test.py, no server)
-bin/test perf-report     # perf suite report + runner tests (tests/perf/*_test.py, no server)
-bin/test encryption      # encryption integration tests
-bin/test per-bucket-encryption   # per-bucket encryption tests
-bin/test virtual-host    # virtual-hosted-style addressing tests (server.domain set, self-contained)
-bin/test kms             # KMS integration tests (with OpenBAO)
-bin/test cluster         # 3-node HA cluster tests (phased node stop/start/partition, self-contained)
-bin/test replication     # replication tests (second instance, self-contained)
-bin/test notifications   # notification delivery tests (webhook receiver, self-contained)
+bin/perf-test [suite [--profile quick --targets arca --variants plain]]
+bin/perf-test report perf-results/<run> --baseline perf-results/<earlier>
+                         # perf-results/ is git-ignored; see documentation/docs/operations/performance.md
 
-# Performance (documentation/docs/operations/performance.md)
-bin/perf-test            # boto3 check against the running server
-bin/perf-test suite      # Arca vs MinIO with warp + listing/boto3/maintenance timings, self-contained;
-                         # run directory + report.html in perf-results/ (git-ignored, never committed)
-bin/perf-test suite --profile quick --targets arca --variants plain   # a quick look
-bin/perf-test report perf-results/<run> --baseline perf-results/<earlier>   # regenerate a report,
-                         # compared with an earlier run (plain container, no server)
-
-# Manual S3 CLI verification against running Arca
-aws s3 ls --endpoint-url http://localhost:9000
-
-# Documentation
-bin/docs-build           # build mkdocs site (output to docs/)
-bin/docs-serve           # serve locally with live reload (http://localhost:8000)
-bin/docs-publish         # build + commit + push docs to update GitHub Pages
+bin/docs-build | docs-serve | docs-publish
+aws s3 ls --endpoint-url http://localhost:9000   # manual check
 ```
 
-Self-contained test modes (`tls`, `encryption`, `kms`, `postgres`, the connectors, ..., and `bin/perf-test --tls/--encryption` / `bin/perf-test suite`) never touch the developer's stack: `use_test_project <mode>` (`bin/lib/compose.sh`) gives each its own compose project (`arca-test-<mode>`), its own `config/.generated-test-<mode>.toml` and ephemeral loopback host ports, so they can run while `bin/arca start` is up. A new self-contained mode must call `use_test_project` first and get a case in `tests/scripts/test_isolation_test.sh`; a port published in a compose overlay must be a `${<NAME>_HOST_PORT:-<port>}` that `use_test_project` remaps (`bin/test scripts` checks every overlay). Modes that start no server (`integration`, `presigned`, `ssec`) run against the running one with `--no-deps`. The suites that need names only a mode's own compose project defines (`test_cluster.py`, `test_replication.py`, the delivery classes of `test_notifications.py`) skip themselves unless that mode set their environment variable (`ARCA_NODE1_ENDPOINT`, `ARCA_REPLICA_ENDPOINT`, `WEBHOOK_RECEIVER_URL`), so a plain `bin/test integration` has no failing test to learn to ignore; a new suite of that kind must do the same. The cluster mode looks node ports up with `docker compose port` on every poll (an ephemeral port changes when a container restarts) and `bin/cluster partition/heal` follow it through `ARCA_CLUSTER_PROJECT`. `scripts`, `s3-report` and `perf-report` need no server at all.
+Self-contained test modes run in their own compose project and never touch the developer's stack. **Before adding a test mode, a suite that needs a mode's own services, or a port in a compose overlay**, read "Self-contained test modes" in `DEVELOPMENT.md`.
 
 ### Build constraints
 
-- The Docker builder's Rust version is whatever its pinned Alpine base image tag carries — read `docker/Dockerfile`, don't assume. Minimum is **1.85**: `getrandom 0.4` requires edition 2024.
-- `ring` crate needs `perl` in Alpine; `rdkafka` (Kafka connector) needs `cmake make g++ curl-dev linux-headers zlib-dev zlib-static` for librdkafka static build.
-- `time` crate pinned to 0.3.47; 0.3.48+ excluded for a coherence clash with `rcgen` (TD-017), not for MSRV reasons.
-- `Cargo.lock*` glob in Dockerfile allows building with or without committed lockfile.
-- `bin/build` only rebuilds the `arca` service image, NOT `unit-test` or `test`. After code changes, run `docker compose -f docker/docker-compose.yml build unit-test test` or test images will be stale.
+- The builder's Rust version is whatever its pinned base image carries: read `docker/Dockerfile`. Minimum **1.85** (`getrandom 0.4` needs edition 2024).
+- `ring` needs `perl` in Alpine; `rdkafka` needs `cmake make g++ curl-dev linux-headers zlib-dev zlib-static`.
+- `time` pinned to 0.3.47: 0.3.48+ clashes with `rcgen` (TD-017).
+- `Cargo.lock*` glob in the Dockerfile allows building with or without a lockfile.
+- `bin/build` does NOT rebuild `unit-test` / `test`: after code changes run `docker compose -f docker/docker-compose.yml build unit-test test`, or tests run stale code.
 
-## Base Image Pinning and Upgrades
+### Base images
 
-Every image Arca **deploys** pins its base image to an exact version tag, so the
-same Dockerfile keeps producing the same toolchain and the same runtime
-packages over time:
-
-| Dockerfile | Stage | Base |
-|---|---|---|
-| `docker/Dockerfile` | `builder` (and `dev`, which inherits it) | Rust on Alpine — **pinned** |
-| `docker/Dockerfile` | `production` | `scratch` — no tag exists, nothing to pin |
-| `docker/Dockerfile` | `development` | Debian slim — **pinned** |
-| `console/Dockerfile` | — | Alpine — **pinned** |
-
-**Never write the concrete pinned versions anywhere but the `FROM` lines
-themselves.** The Dockerfiles are the single source of truth; a tag copied into
-this file, the documentation site or a guide is a second place to forget at the
-next bump. State the principle and point at the Dockerfile. (`CHANGELOG.md` is
-the one exception — it records what changed on a given date, so exact versions
-belong there.)
-
-Images used **only for testing and tooling** deliberately stay unpinned
-(`python:alpine`, `python:3-slim`, `mcr.microsoft.com/playwright/python:…`, and
-the third-party services in the `docker-compose.connector-*.yml` /
-`docker-compose.kms.yml` / `docker-compose.cluster.yml` overlays). They are
-never distributed, and floating tags there mean one less thing to maintain.
-Do not pin them.
-
-The one tooling exception is the documentation image in
-`docker/docker-compose.docs.yml`: its output (`docs/`) is committed, and a
-floating tag would rewrite every page of the site whenever a new theme release
-came out. It is bumped only on request, in a commit of its own that rebuilds
-the whole site and changes no content.
-
-### Upgrading a pinned base image
-
-Bumping a base image tag is a deliberate, reviewed step, never a drive-by edit,
-because **the in-Dockerfile package pins are relative to a specific base image
-version** and a newer base can already ship the fixed version — or a newer one,
-which makes the pin dead weight (or, with `=`, a build failure).
-
-Those package pins exist to remediate a specific advisory the base image had
-not picked up yet. Each one sits next to a comment naming the package, the
-advisories that forced it, and the version the base ships — find them with:
-
-```bash
-grep -rn "apk add\|apt-get install" docker/Dockerfile console/Dockerfile \
-    docker/webhook-receiver/Dockerfile docker/grpc-receiver/Dockerfile
-```
-
-As of writing, the console pins `libcrypto3`/`libssl3` (openssl) and the two
-connector-test receivers pin `libuuid` (util-linux). Read the comments for the
-current constraints rather than trusting this paragraph.
-
-Procedure:
-
-1. **Find the new tag.** Query the registry, don't guess — for Docker Hub
-   library images:
-   ```bash
-   curl -s "https://hub.docker.com/v2/repositories/library/alpine/tags/?page_size=100&ordering=last_updated" \
-     | jq -r '.results[] | "\(.name)\t\(.last_updated)"'
-   ```
-   Pick the exact version that the floating tag currently resolves to, and
-   confirm the pin is digest-identical to it before committing:
-   ```bash
-   docker manifest inspect alpine:latest     | jq -r '.manifests[0].digest'
-   docker manifest inspect alpine:<new-tag>  | jq -r '.manifests[0].digest'   # must match
-   ```
-   For Debian prefer the **numeric** point release (`<major>.<minor>-slim`)
-   over `stable-slim`: same rootfs, but the numeric tag also pins the apt suite
-   to the codename, so `apt-get install` cannot silently cross a Debian major
-   release. For Rust keep the Alpine suffix (`-alpine<major>.<minor>`) — it
-   fixes the apk repository branch, not just the compiler.
-
-2. **Revise every package pin for that image.** For each pin the `grep` above
-   turns up, check what the *new* base already ships and drop or raise the pin
-   accordingly:
-   ```bash
-   docker run --rm alpine:<new-tag> sh -c 'apk update >/dev/null && apk policy libcrypto3 libssl3'
-   docker run --rm debian:<new-tag> sh -c 'apt-get update >/dev/null 2>&1 && apt-cache policy ca-certificates curl'
-   ```
-   If the base's own version already satisfies the advisory, **remove the pin**
-   and delete its comment block — a stale `>=` constraint that the base has
-   overtaken is misleading, and the CVE list in the comment stops being true.
-   If it does not, keep the pin and update the comment to name the new base's
-   version. Never replace a pin with a blanket `apk upgrade` / `apt upgrade`:
-   that makes the build irreproducible.
-
-3. **Re-check the Rust side** when bumping the builder: a new compiler can
-   unblock crate versions that MSRV pins in `Cargo.toml` were working around
-   (see the `time`/TD-017 bullet under Build constraints), and Alpine branch
-   changes can move the C dependencies `ring`/`rdkafka` build against.
-
-4. **Rebuild and verify.** `bin/build && bin/build --console` (the
-   production images — `--dev` builds the Debian image, which never ships),
-   then `bin/test unit` and `bin/test integration`, then scan: `trivy image`
-   must report **0 findings** for `ghcr.io/dxc-technology/arca:production`,
-   `ghcr.io/dxc-technology/arca-console:production`, `arca-webhook-receiver`
-   and `arca-grpc-receiver`. An image scan of `arca` checks next to nothing
-   — scratch has no package database and the Rust binary is not built with
-   `cargo auditable` — so also run `trivy fs --scanners vuln Cargo.lock`,
-   which the publish pipeline enforces too (`image_verify` in
-   `bin/lib/images.sh`). Scan the old and the new image with the *same* tool
-   before claiming an improvement — counts from different scanners are not
-   comparable.
-
-5. **Record it in `CHANGELOG.md`** — and nowhere else. If the bump changed a
-   package pin or the Rust version, say so there. No other file should need
-   editing; if one does, it was carrying a version it shouldn't have. Then
-   `bin/docs-build` if you touched the changelog (the docs site symlinks it).
-
-## Published Container Images
-
-Only the two production images are published, to the GitHub Container
-Registry, as multi-arch (`linux/amd64` + `linux/arm64`) images:
-`ghcr.io/dxc-technology/arca` and `ghcr.io/dxc-technology/arca-console`. Test
-and tooling images (`arca-test`, `arca-unit-test`, the receivers, …) keep
-their bare local names and are never pushed.
-
-- **Release tags** are `X.Y.Z`, plus `X.Y` and `latest` when the release is
-  the newest of its minor line / overall. They exist only in the registry.
-- **Local builds** are tagged after their build target —
-  `ghcr.io/dxc-technology/arca:production` / `:development` (the compose
-  `image:` interpolates `BUILD_TARGET`) and `arca-console:production` — so a
-  working-tree build never carries a release tag or shadows `latest`.
-- **Publishing** happens in `.github/workflows/publish-images.yml` on every
-  `vX.Y.Z` tag push: native build per platform, Trivy gate, push by digest,
-  then one tagged index per image. `bin/build --push` is the local fallback.
-  Both are thin wrappers around `bin/lib/images.sh`, which holds all the
-  logic (and is unit-tested by `bin/test scripts`) — change the pipeline there,
-  not in the workflow.
-- **Metadata**: the static OCI labels (`source`, `description`, `licenses`,
-  …) live in the `LABEL` of each Dockerfile; `source` is what links a GHCR
-  package to this repository. `version` and `revision` are added at publish
-  time, and all labels are copied to index-level annotations, which is where
-  GHCR reads a multi-arch image's description from.
-
-The same workflow archives the static `arca` binary of each scanned image
-(`binary_archive` in `bin/lib/images.sh`) as the `release-binaries` artifact.
-Once the images are published, `bin/release` creates the GitHub release, with
-notes summarised from the CHANGELOG entry and those binaries attached (step 12
-of `RELEASING.md`).
-
-The release procedure, including the one-time package visibility setup, is in
-`RELEASING.md`.
+Deployed images pin their base to an exact tag; **never write a pinned version anywhere but the `FROM` line** (`CHANGELOG.md` excepted). Test and tooling images stay unpinned on purpose, except the docs image (bumped only on request, in its own commit). A bump is never a drive-by edit: follow "Base Image Pinning and Upgrades" in `DEVELOPMENT.md`. All four images must scan clean with `trivy`.
 
 ## Documentation
 
-The documentation site uses MkDocs with Material theme, built inside a Docker container.
-
-**Dual-directory structure**: source files live in `documentation/docs/`, built output goes to `docs/` (served by GitHub Pages). Always update BOTH directories, then commit changes in both `documentation/` and `docs/`.
-
-After every phase completion or significant feature change, update documentation BEFORE committing code: roadmap checkboxes, configuration page, and installation/Quick Start as needed. Rebuild with `bin/docs-build`.
-
-### Console documentation and screenshots
-
-The console user manual lives at `documentation/docs/guide/console.md`. Screenshots are automated via Playwright in Docker. When the console gains new features, update both the screenshots and the documentation:
-
-1. **Update `docker/screenshots/take_screenshots.py`** — add new screenshot captures (seed data in Phase A, capture in Phase B). Each screenshot is a numbered step. The script runs inside a container that shares network with a dedicated `screenshots-console` service (required for Web Crypto API / localhost).
-2. **Update `documentation/docs/guide/console.md`** — add/update sections and screenshot references.
-3. **Run `bin/screenshots --build`** — rebuilds all images (arca, console, screenshots), starts Arca with encryption enabled (for encryption indicators in screenshots), seeds sample data, and captures all screenshots to `documentation/docs/assets/screenshots/`.
-4. **Run `bin/docs-build`** — rebuilds the MkDocs site so `docs/` has the new screenshots and HTML.
-5. Commit changes in `bin/`, `docker/screenshots/`, `documentation/`, and `docs/`.
-
-`bin/screenshots` uses the `compose.sh` library and enables encryption by default. Pass `--no-encryption` to capture without encryption indicators.
+MkDocs Material, built in Docker. Sources in `documentation/docs/`, built output in `docs/` (GitHub Pages): update and commit BOTH. After a phase or significant feature, update docs BEFORE committing code (roadmap checkboxes, configuration page, installation/Quick Start), then `bin/docs-build`. When the console gains features, follow "Console documentation and screenshots" in `DEVELOPMENT.md`.
 
 ## Architecture
 
-Five-crate Cargo workspace with strict dependency graph (no cycles):
+Five-crate workspace, no cycles:
 
-- **arca-core** — Shared types, traits (`BlobStore`, `MetadataStore`), error types. Zero I/O dependencies.
-- **arca-auth** — AWS SigV4 verification. Zero I/O dependencies and no dependency on any other Arca crate, independently testable against AWS test vectors.
-- **arca-proto** — S3 and admin HTTP protocol adapter (Axum 0.8 + Tower). Handlers (which hold the request logic and call the storage traits directly, there is no separate use-case layer), XML ser/de, middleware (auth, virtual-host rewrite, CORS, rate limiting, audit).
-- **arca-storage** — Storage implementations: `FsBlobStore` (UUID + sidecar) and its decorators (`EncryptingBlobStore`, `CompressingBlobStore`, `SsecBlobStore`), `SqliteStore` (tokio-rusqlite, WAL, one writer + read pool), `PgStore` (PostgreSQL), `CachingMetadataStore`.
-- **arca-server** — Binary crate. Wires dependencies, config (TOML + env), CLI (clap; full list in `crates/arca-server/src/cli.rs` and `documentation/docs/guide/cli.md`), background workers, HA cluster decorators (`src/cluster/`).
+- **arca-core**: shared types, traits (`BlobStore`, `MetadataStore`), errors. No I/O.
+- **arca-auth**: SigV4 verification. No I/O, no Arca dependency, tested against AWS vectors.
+- **arca-proto**: S3 + admin HTTP adapter (Axum 0.8 + Tower). Handlers hold the request logic and call the storage traits directly (no use-case layer); XML ser/de; middleware (auth, virtual-host rewrite, CORS, rate limiting, audit).
+- **arca-storage**: `FsBlobStore` (UUID + sidecar) and decorators (`EncryptingBlobStore`, `CompressingBlobStore`, `SsecBlobStore`), `SqliteStore` (tokio-rusqlite, WAL, one writer + read pool), `PgStore`, `CachingMetadataStore`.
+- **arca-server**: binary. Wiring, config (TOML + env), CLI (`crates/arca-server/src/cli.rs`, `documentation/docs/guide/cli.md`), background workers, HA cluster decorators (`src/cluster/`).
 
-Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`, `arca-core`; `arca-proto` -> `arca-core`, `arca-auth`; `arca-storage` -> `arca-core`. `arca-auth` and `arca-core` are leaves.
+`arca-server` -> all; `arca-proto` -> `arca-core`, `arca-auth`; `arca-storage` -> `arca-core`. `arca-auth` and `arca-core` are leaves.
 
 ## Key Design Constraints
 
-**No `s3s` crate** — we build our own S3 HTTP protocol adapter with Axum. This was an explicit decision to avoid pre-1.0 dependency risk.
+**No `s3s` crate**: our own S3 adapter on Axum (avoid pre-1.0 dependency risk).
 
-**S3 query-parameter routing** — S3 overloads the same HTTP method+path with different query params. Handlers dispatch internally (e.g., `PUT /:bucket/*key` -> PutObject vs UploadPart based on `?partNumber=&uploadId=`).
+**S3 query-parameter routing**: same method+path, different query params; handlers dispatch internally (e.g. `PUT /:bucket/*key` -> PutObject vs UploadPart on `?partNumber=&uploadId=`).
 
-**Streaming-first** — never buffer full objects in memory. PutObject streams through MD5 hasher + file writer concurrently. GetObject streams from tokio::fs::File via ReaderStream.
+**Streaming-first**: never buffer full objects in memory.
 
-**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the `blobs/` directory, reads `.meta` files, and rebuilds the DB from scratch (with known gaps: TD-014, TD-032). Every step is durable: blob and sidecar data are `fsync`ed before the atomic rename that publishes them, and the sidecar write `fsync`s the directory after its rename (helpers in `arca-storage/src/fs/blob.rs`: `rename_durable`, `write_file_atomic`, `create_dir_all_durable`), so a new writer must use them rather than plain `fs::write`/`rename`. **A blob is durable once its sidecar has been written**: blob renames (`put`, `write_raw`, the `concat` fallback) skip their own directory fsync because the sidecar lives in the same directory and its fsync covers both (3 fsyncs per small PUT, not 4). So every blob writer must write the sidecar, and fail the request (discarding the fresh blob) if that write fails, before committing the metadata row (`handlers/sidecar.rs`: `write_sidecar_or_discard`); a writer with no sidecar must use `rename_durable` instead. SQLite commits with `synchronous=FULL`. All of this is `[storage] fsync = true` (default); `false` makes `FsBlobStore` (`with_fsync`) and `SqliteStore::open_with_fsync` skip the fsyncs but keep temp + rename. Only the live server reads the setting: offline tools build their stores with `FsBlobStore::new` / `SqliteStore::open`, which are always durable, and must stay so. Blobs are written to a temp file opened with `create_new` (`O_CREAT | O_EXCL`), then renamed; a partial unique index on `(bucket, key) WHERE is_latest = 1` prevents two current versions of a key; `arca fsck` reports orphaned blobs, missing blobs, sidecar/DB mismatches, orphaned sidecars, stale temp files and (optionally) checksum errors.
+**Storage write order**: blob -> sidecar `.meta` -> metadata row, so `arca recover` can rebuild the DB from `blobs/` (gaps: TD-014, TD-032). Durability rules:
+- Use the helpers in `arca-storage/src/fs/blob.rs` (`rename_durable`, `write_file_atomic`, `create_dir_all_durable`), never plain `fs::write`/`rename`. Temp files are opened with `create_new`, then renamed.
+- **A blob is durable once its sidecar is written**: blob renames skip their own directory fsync because the sidecar's covers both. So every blob writer must write the sidecar, and fail the request (discarding the blob) if that fails, before committing the row (`handlers/sidecar.rs`: `write_sidecar_or_discard`); a writer with no sidecar must use `rename_durable`.
+- `[storage] fsync = false` makes `FsBlobStore::with_fsync` / `SqliteStore::open_with_fsync` skip fsyncs (temp + rename kept). Only the live server reads it: offline tools use `FsBlobStore::new` / `SqliteStore::open`, always durable, and must stay so.
+- A partial unique index on `(bucket, key) WHERE is_latest = 1` prevents two current versions.
 
-**`put_object` returns old record** — `MetadataStore::put_object` returns `(Option<ObjectRecord>, Option<String>)`: the overwritten object (so the caller can delete its orphaned blob) and the new version id. It delegates to `put_object_if`, which evaluates conditional-write preconditions inside the same transaction (see `reference/architecture.md`).
+**`put_object` returns the old record**: `(Option<ObjectRecord>, Option<String>)`, the overwritten object (caller deletes its blob) and the new version id. It delegates to `put_object_if`, which checks conditional-write preconditions in the same transaction.
 
-**Multipart composite ETag** — `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`. Note: concat the binary MD5 bytes, not hex strings.
+**Multipart composite ETag**: `hex(MD5(binary_MD5(part1) || ...))-{count}`, concatenating binary MD5s, not hex strings.
 
-**Auth body hash** — Accept `UNSIGNED-PAYLOAD` and the `STREAMING-*` payload modes; the SigV4 signature covers headers + URI, not the body. Body integrity is verified separately on PutObject and UploadPart (`handlers/integrity.rs`): `Content-MD5` (`BadDigest` / `InvalidDigest`), `x-amz-checksum-*` from a header or an aws-chunked trailer (`BadDigest` / `InvalidRequest`) and a hex `x-amz-content-sha256` (`XAmzContentSHA256Mismatch`), checked after the blob is written and before the sidecar and metadata row, deleting the blob on a mismatch. The chunks and the trailer of a signed aws-chunked body (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD[-TRAILER]`) are verified while the body streams: `auth_middleware` puts an `arca_auth::ChunkVerifier` (derived signing key + the request's seed signature) in the request extensions, `verified_body_stream` hands it to `AwsChunkedDecoder`, and a chunk or trailer that does not verify, a missing signature or a body without its signed final chunk ends the stream with `SignatureDoesNotMatch` before the blob is committed (`handlers/body.rs`; the lenient `body_to_byte_stream` is for inter-node bodies only). A multipart upload created with a checksum algorithm gives its object a COMPOSITE or FULL_OBJECT checksum at Complete (`handlers/multipart_checksum.rs`: pure arithmetic on the part checksums, CRC combination for FULL_OBJECT; `plan_complete` validates the request before any blob is assembled), and every object completed from parts keeps its part layout in `objects.parts`, read on demand by `MetadataStore::get_object_parts` (the S3 read queries and the write queries must NOT select the column, only `apply_remote_object` and the replication manifest do: see `OBJECT_COLUMNS` and `OBJECT_COLUMNS_FULL` in `sqlite/metadata.rs` and `pg/metadata.rs`).
+**Body integrity** (SigV4 covers headers + URI, not the body; `UNSIGNED-PAYLOAD` and `STREAMING-*` accepted):
+- PutObject/UploadPart check `Content-MD5`, `x-amz-checksum-*` (header or trailer) and hex `x-amz-content-sha256` after the blob is written, before sidecar and row, deleting the blob on mismatch (`handlers/integrity.rs`).
+- Signed aws-chunked bodies are verified while streaming (`auth_middleware` -> `ChunkVerifier` extension -> `verified_body_stream`, `handlers/body.rs`). The lenient `body_to_byte_stream` is for inter-node bodies only.
+- Multipart checksums are computed at Complete from part checksums (`handlers/multipart_checksum.rs`, `plan_complete` validates first). The `objects.parts` column is read only by `get_object_parts`: S3 read and write queries must NOT select it, only `apply_remote_object` and the replication manifest do (`OBJECT_COLUMNS` vs `OBJECT_COLUMNS_FULL` in `sqlite/metadata.rs`, `pg/metadata.rs`).
 
-**Configuration migration without data migration** — Arca must allow any configuration change (storage backend, encryption, node topology, etc.) without requiring data migration to a new instance. Changes are applied via offline CLI tools (`arca migrate-*`) or live reconfiguration that operate in-place on the existing data directory. This is a hard architectural constraint: unlike MinIO, which forces a fresh instance when changing topology, Arca must always provide a migration path that preserves existing data in place.
+**Configuration migration without data migration** (hard constraint): any config change (backend, encryption, topology, ...) must have an in-place path, offline (`arca migrate-*`) or live, on the existing data directory. Never require a fresh instance.
 
-**TLS** — `tokio-rustls` + `hyper_util` (not `axum-server`), `ring` crypto backend (not `aws-lc-rs`). Single port for everything including health checks. ArcSwap for cert hot-reload on SIGHUP.
+**TLS**: `tokio-rustls` + `hyper_util` (not `axum-server`), `ring` (not `aws-lc-rs`), single port including health checks, ArcSwap cert hot-reload on SIGHUP.
 
-**Encryption (SSE-S3)** — AES-256-GCM via `ring` crate, `EncryptingBlobStore` wraps `FsBlobStore`. Chunk-based streaming (64 KiB). Envelope encryption: random DEK per object, wrapped by master KEK. ETag computed on plaintext. Mixed-mode coexistence. `bucket_config` table for per-bucket settings.
+**SSE-S3**: AES-256-GCM (`ring`), `EncryptingBlobStore` over `FsBlobStore`, 64 KiB chunks, random DEK per object wrapped by master KEK, ETag on plaintext, mixed-mode coexistence, per-bucket settings in `bucket_config`.
 
-**KMS (SSE-KMS)** — Fetch master key from Vault/OpenBAO KV v2 at startup, cache in memory. `[encryption.kms]` config section, mutually exclusive with `master_key`. `reqwest` with `rustls-tls` backend.
+**SSE-KMS**: master key fetched from Vault/OpenBAO KV v2 at startup and cached; `[encryption.kms]`, mutually exclusive with `master_key`; `reqwest` with `rustls-tls`.
 
-## Web Console & Admin API
-
-**Separated console** — The web console is a separate application in `console/`, not embedded in the Arca binary. Reasons: keeps the binary small (minimal scratch image), allows independent release cycles, supports split deployment (Arca on hardened VM, console on k8s), minimizes attack surface on the storage engine. The console is just another API client.
-
-**Admin API on same port** — Admin endpoints live under `/admin/*` on port 9000, coexisting with the S3 API via path-prefix routing. Auth uses SigV4 (same as S3). Response format is JSON (not S3 XML).
+**Console**: separate app in `console/`, just another API client (small binary, independent releases, split deployment, smaller attack surface). **Admin API** under `/admin/*` on port 9000, SigV4 auth, JSON responses.
 
 ## Known Gotchas
 
-- **Axum `Router::layer()` runs AFTER routing** — middleware applied this way only executes for matched routes. To modify the request URI before routing (e.g. trailing-slash normalization), wrap the Router externally with a tower Layer/Service.
-- **mc sends `?uploads=`** (with `=`), not `?uploads` — query param matching in handlers must account for both forms.
-- **HTTP/2 SigV4 host header** — In HTTP/2, browsers send `:authority` pseudo-header instead of `Host`. hyper does NOT synthesize a `host` header. Auth middlewares must synthesize `host` from URI authority when missing.
-- **Multipart + encryption** — Parts MUST have sidecars written after `put()` when encryption is enabled, so `get()` during `CompleteMultipartUpload` assembly can detect and decrypt them.
-- **Console Alpine.js scopes** — Each view is a separate `x-data` scope, they do NOT share state. Store needed data locally in each view's `load()` method.
-- **TLS auto-detect limitation** — Fails when multiple key files exist in the cert directory. Tests use `tls-explicit` fragment with explicit filenames to avoid ambiguity.
+- **Axum `Router::layer()` runs AFTER routing**: to rewrite the URI before routing, wrap the Router with an external tower Layer.
+- **mc sends `?uploads=`** (with `=`): match both forms.
+- **HTTP/2 has no `host` header** (only `:authority`) and hyper does not synthesize it: auth must derive it from the URI.
+- **Multipart + encryption**: parts MUST get sidecars after `put()`, so Complete can detect and decrypt them.
+- **Console Alpine.js scopes**: each view is its own `x-data`, no shared state; load data in each view's `load()`.
+- **TLS auto-detect** fails with several key files in the cert directory; tests use the `tls-explicit` fragment.
 
 ## Planning Large Changes
 
-Plans and reviews are working documents for a single task: keep them out of the repository, or delete them when the task is done. Before deleting, move anything durable (design decisions and their rationale, invariants, known limits) into `documentation/docs/` or `TECH_DEBT.md`, and make sure no code comment depends on an ID defined only in the plan.
+Plans and reviews stay out of the repository (or are deleted when done). First move anything durable (decisions and rationale, invariants, known limits) into `documentation/docs/` or `TECH_DEBT.md`, and make sure no code comment cites an ID defined only in the plan.
 
-Lesson from the Phase 29 HA review, for any feature that spans many subsystems: for every guarantee, design its failure path too (what happens when the guarantee cannot be met); include an operations-lifecycle section (deploy, upgrade, resize, recover); and audit every existing subsystem for how it behaves when the new feature changes its assumptions (e.g. N nodes instead of one).
+For features spanning many subsystems: design the failure path of every guarantee, include an operations lifecycle (deploy, upgrade, resize, recover), and audit every existing subsystem for assumptions the feature changes (e.g. N nodes instead of one).
 
 ## Technical Debt
 
-Workarounds and known shortcuts are tracked in `TECH_DEBT.md` at the repo root. The roadmap (`documentation/docs/roadmap.md`) also has a tech debt section that should be kept in sync.
-
-When implementing a workaround or shortcut instead of a proper solution:
-
-1. Add a `TECHDEBT(TD-XXX)` comment in the code at the workaround site.
-2. Add a corresponding entry in `TECH_DEBT.md` with the same ID, description, affected files, and proposed fix.
-3. Update the tech debt section at the bottom of `documentation/docs/roadmap.md`.
-
-When fixing a tech debt item, remove the `TECHDEBT` markers from code, mark it resolved in `TECH_DEBT.md`, and update the roadmap.
+For a workaround or shortcut: add a `TECHDEBT(TD-XXX)` comment at the site, an entry with the same ID in `TECH_DEBT.md` (description, files, proposed fix), and update the tech debt section of `documentation/docs/roadmap.md`. When fixing one: remove the markers, mark it resolved, update the roadmap.
 
 ## Test Coverage Table
 
-`README.md` contains a "Test Coverage" table with counts for unit tests, integration tests (boto3 + MinIO), and Ceph s3-tests. **Update this table whenever test counts change** — after adding/removing tests, running Ceph s3-tests with new results, or any change that affects the numbers.
-
-After running `bin/s3-tests`, the report script generates `s3-tests/summary.json` with machine-readable results (total, passed, failed, skipped, pass_pct, unexpected_failures, per-category breakdown). **Always read `s3-tests/summary.json` after Ceph tests finish and update the Ceph row in the README test coverage table with the actual numbers.** The SVG badge at `s3-compatibility-badge.svg` is auto-updated by the report script.
-
-## Session Startup
-
-When starting a new session, always read these files first to rebuild context:
-
-- `AGENTS.md` (this file)
-- `documentation/docs/roadmap.md` — current phase status, post-MVP progress, what's done and what's next
-- `TECH_DEBT.md` — active workarounds and their IDs
+Update the "Test Coverage" table in `README.md` whenever test counts change. After `bin/s3-tests`, read `s3-tests/summary.json` and update the Ceph row with its numbers (the badge SVG updates itself).
 
 ## Versioning and Releases
 
-This project uses **semantic versioning** (MAJOR.MINOR.PATCH). The full release procedure is in `RELEASING.md`. Read that file when asked to "make a new release" or bump the version.
-
-**Version locations** (all must be in sync):
-
-- `Cargo.toml` root `[workspace.package]` — single source of truth, inherited by all 5 crates via `version.workspace = true`
-- `console/index.html` line 10 (`window.ARCA_CONSOLE_VERSION`) — must be bumped manually (standalone HTML, no build tooling)
-- `deploy/kubernetes/arca-console.yaml` — the `ghcr.io/dxc-technology/arca-console:X.Y.Z` image tag, in the init container and in the console container (two occurrences); the manifest pins an explicit release, never `latest`
-- `documentation/docs/roadmap.md` Phase Summary table — historical per-phase version tags, update when completing a phase
-- `publiccode.yml` — `softwareVersion` and `releaseDate`, the metadata the Developers Italia catalogue reads. Re-validate after editing: `docker run --rm -v "$PWD":/work -w /work italia/publiccode-parser-go:latest publiccode.yml`
-- `CHANGELOG.md` — [Keep a Changelog](https://keepachangelog.com) format. The docs site symlinks to this file (`documentation/docs/changelog.md` → `../../CHANGELOG.md`).
+Semantic versioning. Read `RELEASING.md` when asked to make a release or bump the version: step 4 lists every version location that must stay in sync (`Cargo.toml` `[workspace.package]` is the source of truth). `CHANGELOG.md` follows Keep a Changelog; the docs site symlinks it.

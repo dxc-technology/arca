@@ -1,6 +1,6 @@
 # The theme version is pinned because its output (docs/) is committed: a
 # floating tag would rewrite every page whenever a new release came out.
-# Bump it deliberately, in a commit of its own (see AGENTS.md).
+# Bump it deliberately, in a commit of its own (see DEVELOPMENT.md).
 services:
   docs-build:
     image: squidfunk/mkdocs-material:9.7.7

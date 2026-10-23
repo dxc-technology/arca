@@ -90,7 +90,7 @@ Every platform is built natively on its own runner and scanned by Trivy before
 anything is tagged — the image itself, plus `Cargo.lock` for `arca`, whose
 scratch image carries nothing an image scan can check. **Any finding fails
 the release**: fix it (a pinned package upgrade, see "Base Image Pinning and
-Upgrades" in `AGENTS.md`, or a dependency bump), make a new patch release, and
+Upgrades" in `DEVELOPMENT.md`, or a dependency bump), make a new patch release, and
 never delete or move the tag. The workflow also refuses a tag that disagrees
 with `Cargo.toml` or `console/index.html`.
 
