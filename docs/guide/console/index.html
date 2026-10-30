@@ -3136,7 +3136,7 @@
 <p><img alt="Console dashboard" src="../../assets/screenshots/console-dashboard.png" /></p>
 <p>The dashboard is available to <strong>admin credentials only</strong>. It shows:</p>
 <ul>
-<li><strong>Server info</strong>: version, uptime</li>
+<li><strong>Server info</strong>: version, uptime, transport. Transport is <strong>TLS</strong> when Arca terminates TLS itself, <strong>TLS · proxy</strong> when the console reaches Arca over an <code>https://</code> endpoint while Arca listens on plain HTTP (TLS terminated by a reverse proxy; the hop from the proxy to Arca is unencrypted), and <strong>HTTP</strong> otherwise. The console only sees its own path to Arca: if Arca's port is reachable directly, other S3 clients can still use it over plain HTTP</li>
 <li><strong>Storage stats</strong>: bucket count, object count, total storage size</li>
 <li><strong>Storage distribution</strong>: SVG donut chart showing size per bucket</li>
 <li><strong>Encryption status</strong>: whether server-side encryption is active (SSE-S3 with local key or Vault/OpenBAO KMS)</li>

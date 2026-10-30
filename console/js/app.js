@@ -4,7 +4,7 @@
  */
 import { api } from './api.js?v=deeplink-1';
 import { topicFor } from './help.js';
-import { dashboardView } from './views/dashboard.js';
+import { dashboardView } from './views/dashboard.js?v=transport-proxy-1';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
 import { bucketDetailView } from './views/bucket-detail.js?v=deeplink-1';
 import { credentialsView } from './views/credentials.js';

@@ -101,7 +101,7 @@ The console determines your role after connecting. Admin credentials unlock the 
 
 The dashboard is available to **admin credentials only**. It shows:
 
-- **Server info**: version, uptime
+- **Server info**: version, uptime, transport. Transport is **TLS** when Arca terminates TLS itself, **TLS · proxy** when the console reaches Arca over an `https://` endpoint while Arca listens on plain HTTP (TLS terminated by a reverse proxy; the hop from the proxy to Arca is unencrypted), and **HTTP** otherwise. The console only sees its own path to Arca: if Arca's port is reachable directly, other S3 clients can still use it over plain HTTP
 - **Storage stats**: bucket count, object count, total storage size
 - **Storage distribution**: SVG donut chart showing size per bucket
 - **Encryption status**: whether server-side encryption is active (SSE-S3 with local key or Vault/OpenBAO KMS)

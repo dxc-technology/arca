@@ -133,6 +133,15 @@ export function dashboardView() {
         ? this.cluster.disk_available_bytes : this.stats.disk_available_bytes;
     },
 
+    /// How the browser reaches Arca: 'tls' when Arca terminates TLS itself,
+    /// 'proxy' when the endpoint is https:// but Arca listens on plain HTTP
+    /// (TLS terminated by a reverse proxy in front of it), else 'http'.
+    transport() {
+      if (this.info.tls_enabled) return 'tls';
+      const endpoint = sessionStorage.getItem('arca_endpoint') || '';
+      return endpoint.toLowerCase().startsWith('https://') ? 'proxy' : 'http';
+    },
+
     /// Compact "Ns/Nm/Nh/Nd ago" for a node's last health contact.
     relativeTime(iso) {
       if (!iso) return '—';

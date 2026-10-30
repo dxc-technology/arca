@@ -68,7 +68,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=deeplink-1"></script>
+  <script type="module" src="/js/app.js?v=transport-proxy-1"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -632,15 +632,16 @@
                   </div>
                   <div class="min-w-0">
                     <div class="text-vault-muted text-xs mb-1">Transport</div>
-                    <div class="flex items-center gap-1.5">
-                      <template x-if="info.tls_enabled">
+                    <div class="flex items-center gap-1.5"
+                         :title="transport() === 'proxy' ? 'TLS terminated by a reverse proxy; Arca itself listens on plain HTTP' : ''">
+                      <template x-if="transport() !== 'http'">
                         <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
                       </template>
-                      <template x-if="!info.tls_enabled">
+                      <template x-if="transport() === 'http'">
                         <svg class="w-4 h-4 text-vault-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
                       </template>
-                      <span x-text="info.tls_enabled ? 'TLS' : 'HTTP'"
-                            :class="info.tls_enabled ? 'text-green-400' : 'text-vault-muted'"
+                      <span x-text="{ tls: 'TLS', proxy: 'TLS · proxy', http: 'HTTP' }[transport()]"
+                            :class="transport() !== 'http' ? 'text-green-400' : 'text-vault-muted'"
                             class="text-base font-semibold whitespace-nowrap"></span>
                     </div>
                   </div>
