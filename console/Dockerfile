@@ -9,8 +9,8 @@
 # pins the rootfs, not the apk repository index: the release branch keeps
 # receiving package updates, so the version constraints below can be satisfied
 # by newer builds without changing this tag. Upgrade procedure: see
-# "Base Image Pinning and Upgrades" in AGENTS.md.
-FROM alpine:3.24.1
+# "Base Image Pinning and Upgrades" in DEVELOPMENT.md.
+FROM alpine:3.24.3
 
 # OCI metadata. `source` is what links the package on ghcr.io to this
 # repository; GHCR shows `description` on the package page. Version and
@@ -32,19 +32,11 @@ LABEL org.opencontainers.image.title="Arca Console" \
 # (endpoint injection) at startup, so those paths — plus nginx's own temp/
 # cache/pid dirs, which default to root-owned /run — must be owned by that
 # user.
-# Point upgrades only, never a blanket `apk upgrade`: that would pull an
-# unknown set of package versions at build time and make the build
-# irreproducible. Each constraint here names one package and the advisory that
-# forced it, so the diff says what changed and why.
-#   libcrypto3/libssl3 >= 3.5.8-r0 -- openssl CVE-2026-14456, -14457, -18798,
-#   -54874, -63072, -63073, -63074, -63075, -63076, -75803 (the base image
-#   still ships 3.5.7-r0).
-#   zlib >= 1.3.2-r1 -- CVE-2026-85091 (the base image ships 1.3.2-r0, and so
-#   does alpine 3.24.2).
-# `>=` rather than `=`: Alpine drops superseded versions from the repo index,
-# so an exact pin turns into a hard build failure the day a newer build lands.
-RUN apk add --no-cache nginx \
-        'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' 'zlib>=1.3.2-r1' && \
+# No package pins: the base image ships every fixed version the scanners ask
+# for. Should an advisory need one, add a point constraint here
+# ('pkg>=version', naming the package and the advisory), never a blanket
+# `apk upgrade`, which would make the build irreproducible.
+RUN apk add --no-cache nginx && \
     deluser nginx && \
     addgroup -g 10001 nginx && \
     adduser -D -H -h /var/lib/nginx -u 10001 -G nginx -s /sbin/nologin nginx && \

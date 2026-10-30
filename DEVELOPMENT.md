@@ -61,7 +61,7 @@ grep -rn "apk add\|apt-get install" docker/Dockerfile console/Dockerfile \
     docker/webhook-receiver/Dockerfile docker/grpc-receiver/Dockerfile
 ```
 
-As of writing, the console pins `libcrypto3`/`libssl3` (openssl) and the two connector-test receivers pin `libuuid` (util-linux). Read the comments for the current constraints rather than trusting this paragraph.
+As of writing, the Rust builder pins `musl-dev` (musl) and `zlib-dev`/`zlib-static` (zlib), the console pins nothing, and the two connector-test receivers pin `libuuid` (util-linux). Read the comments for the current constraints rather than trusting this paragraph.
 
 Procedure:
 

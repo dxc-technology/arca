@@ -6,16 +6,18 @@
 # was set. The Alpine part of it is not cosmetic — it fixes the musl/apk
 # repository branch the packages below come from. Bumping this tag is a
 # deliberate, reviewed step: see "Base Image Pinning and Upgrades" in
-# AGENTS.md. This FROM line is the single source of truth for the builder's
+# DEVELOPMENT.md. This FROM line is the single source of truth for the builder's
 # Rust version; do not restate it in documentation.
 FROM rust:1.98.1-alpine3.24 AS builder
 
-# zlib is linked statically into the binary (librdkafka, through libz-sys),
-# where an image scan cannot see it: the scratch image has no package
-# database. Point constraint, never a blanket `apk upgrade`:
+# musl and zlib are linked statically into the binary (zlib by librdkafka,
+# through libz-sys), where an image scan cannot see them: the scratch image has
+# no package database. Point constraints, never a blanket `apk upgrade`:
+#   musl-dev >= 1.2.6-r3 -- musl CVE-2026-107891 (the base image ships
+#   1.2.6-r2).
 #   zlib-dev/zlib-static >= 1.3.2-r1 -- zlib CVE-2026-85091 (the base image
 #   ships 1.3.2-r0).
-RUN apk add --no-cache musl-dev perl cmake make g++ curl-dev linux-headers \
+RUN apk add --no-cache 'musl-dev>=1.2.6-r3' perl cmake make g++ curl-dev linux-headers \
         'zlib-dev>=1.3.2-r1' 'zlib-static>=1.3.2-r1' protobuf-dev protoc
 
 WORKDIR /build
@@ -104,7 +106,7 @@ CMD ["serve"]
 # same reproducibility reason as the builder. The numeric tag also pins the apt
 # suite to the codename (`trixie` instead of the floating `stable`), so
 # `apt-get install` below cannot silently jump to the next Debian release the
-# day it ships. Upgrade procedure: see AGENTS.md.
+# day it ships. Upgrade procedure: see DEVELOPMENT.md.
 FROM debian:13.6-slim AS development
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
