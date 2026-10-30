@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.34.0] — 2026-10-30
+## [0.34.1] — 2026-10-30
+
+v0.34.0 was tagged but never published: the scans of its release run found the advisories under Security, so no image, binary or GitHub release exists for it. 0.34.1 is the first release with the changes below.
 
 ### Added
 
@@ -58,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A delimited listing reads only what its page returns.** ListObjects (V1 and V2) and ListObjectVersions with a delimiter read every key, or every version, under each common prefix before moving to the next one: a listing at the root of a bucket read the whole bucket, however few prefixes it returned, and one request could keep the database busy for as long as the bucket was large. Once a listing reaches a common prefix, its next query now starts past every key under it, so a page costs at most one query of 100 rows per item it returns. The three listings share the same grouping code.
 - **DeleteBucket no longer counts the bucket's objects to see whether it is empty** (nor does enabling Object Lock on an existing bucket). The check was `COUNT(*) ... LIMIT 1`, which counts every row before applying the limit; it is now an `EXISTS` that stops at the first row.
 - **The documented default of `server.runtime.max_blocking_threads` was wrong.** The configuration guide and the code comments said `0` meant `num_cpus`; it leaves tokio's own default, a pool of up to 512 threads that grows on demand, which is what the server has always run with. The guide now says so, and advises against a low cap: every file operation runs in that pool.
+
+### Security
+
+- **musl CVE-2026-107891** in both images. The console's Alpine base shipped musl 1.2.6-r2; it moves from Alpine 3.24.1 to 3.24.3, which ships musl 1.2.6-r3, openssl 3.5.9-r0 and zlib 1.3.2-r1, so the console Dockerfile no longer needs its openssl and zlib constraints and has none. The `arca` binary links musl statically, where the image scan cannot see it because the scratch image has no package database, and the Rust builder image still ships 1.2.6-r2: the builder now requires `musl-dev >= 1.2.6-r3`. Earlier binaries and images embed musl 1.2.6-r2.
+- **rustls 0.23.46** (`Cargo.lock` only, a compatible point release) for GHSA-c8m5-c952-6cm4 (MEDIUM: the `Debug` output of a session exposed TLS secrets) and three LOW advisories: GHSA-h2v8-394m-p7vv (Brotli certificate decompression could allocate an attacker-chosen amount of memory), GHSA-vp88-798v-h67f (an ECH rejection could expose buffered application data) and GHSA-w44r-93j7-qv28 (an unauthenticated ServerHello could poison the per-name key-exchange record).
+
+## [0.34.0] — 2026-10-30 [YANKED]
+
+Tagged but never published; its changes ship in [0.34.1](#0341-2026-10-30).
 
 ## [0.33.0] — 2026-10-17
 
@@ -1036,7 +1047,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.34.1...HEAD
+[0.34.1]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.1
 [0.34.0]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/dxc-technology/arca/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/dxc-technology/arca/compare/v0.32.0...v0.32.1
