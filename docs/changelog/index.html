@@ -1267,7 +1267,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0340-2026-10-30" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.34.0 — 2026-10-30
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.34.0 — 2026-10-30">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3443,7 +3454,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0340-2026-10-30" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.34.0 — 2026-10-30
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.34.0 — 2026-10-30">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -5573,7 +5595,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.33.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.34.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0340-2026-10-30"><a href="https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.0">0.34.0</a> — 2026-10-30<a class="headerlink" href="#0340-2026-10-30" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>A benchmark suite that compares Arca with MinIO: <code>bin/perf-test suite</code>.</strong> It runs the same <a href="https://github.com/minio/warp">warp</a> scenarios against both servers on the same host and storage: small PUT, GET and HEAD at several concurrencies, 64 MiB PUT and GET, ranged GET, multipart upload, a mixed workload, DeleteObjects, ListObjectsV2 and a versioned workload. Each server runs in three configurations: plain, SSE-S3 and compression. The suite also times ListObjectsV2 walks over a seeded key tree, with and without a delimiter, on both servers, and runs the SDK-side boto3 suite. For Arca it adds the offline maintenance commands (<code>fsck</code>, <code>fsck --verify-checksums</code>, <code>gc</code>, <code>compress-existing</code>, <code>recover</code>) on a seeded store, with each command's peak memory.</li>

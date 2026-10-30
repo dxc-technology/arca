@@ -5,8 +5,8 @@ publiccodeYmlVersion: "0.7.0"
 name: Arca
 url: "https://github.com/dxc-technology/arca"
 landingURL: "https://dxc-technology.github.io/arca/"
-softwareVersion: "0.33.0"
-releaseDate: "2026-10-17"
+softwareVersion: "0.34.0"
+releaseDate: "2026-10-30"
 logo: logo.svg
 
 platforms:

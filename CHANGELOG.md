@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-10-30
+
 ### Added
 
 - **A benchmark suite that compares Arca with MinIO: `bin/perf-test suite`.** It runs the same [warp](https://github.com/minio/warp) scenarios against both servers on the same host and storage: small PUT, GET and HEAD at several concurrencies, 64 MiB PUT and GET, ranged GET, multipart upload, a mixed workload, DeleteObjects, ListObjectsV2 and a versioned workload. Each server runs in three configurations: plain, SSE-S3 and compression. The suite also times ListObjectsV2 walks over a seeded key tree, with and without a delimiter, on both servers, and runs the SDK-side boto3 suite. For Arca it adds the offline maintenance commands (`fsck`, `fsck --verify-checksums`, `gc`, `compress-existing`, `recover`) on a seeded store, with each command's peak memory.
@@ -1034,7 +1036,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/dxc-technology/arca/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/dxc-technology/arca/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/dxc-technology/arca/compare/v0.31.2...v0.32.0
