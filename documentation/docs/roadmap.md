@@ -98,7 +98,7 @@ graph LR
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
     style 14 fill:#c62828,color:#fff
-    style 15 fill:#c62828,color:#fff
+    style 15 fill:#e65100,color:#fff
     style 16 fill:#e65100,color:#fff
     style 17 fill:#e65100,color:#fff
     style 18 fill:#e65100,color:#fff
@@ -108,9 +108,9 @@ graph LR
     style 22 fill:#2e7d32,color:#fff
     style 23 fill:#2e7d32,color:#fff
     style 24 fill:#2e7d32,color:#fff
-    style 25 fill:#2e7d32,color:#fff
+    style 25 fill:#1565c0,color:#fff
     style 26 fill:#1565c0,color:#fff
-    style 27 fill:#1565c0,color:#fff
+    style 27 fill:#2e7d32,color:#fff
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
     style H291 fill:#e65100,color:#fff
