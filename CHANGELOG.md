@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-11-13
+
 ### Security
 
 - **Virtual-hosted requests are authorized on the bucket they address.** With `[server] domain` set, the auth middleware evaluated grants on the path the client sent, before the rewrite to path style, while the handler ran on the rewritten one. A user allowed `s3:ListAllMyBuckets` could list any bucket with `GET /` and `Host: <bucket>.<domain>`, and a key path starting with the name of the user's own bucket (`/<own-bucket>/x`) borrowed that bucket's grant to read, write or delete `x` in the host's bucket. Grants are now evaluated on the routed request; the signature is still verified on the URI the client signed. This also lets a non-root user work on their own bucket virtual-hosted, which was refused before (`PUT /key` was checked as CreateBucket on `key`).
@@ -1077,7 +1079,8 @@ Tagged but never published; its changes ship in [0.34.1](#0341-2026-10-30).
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.34.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/dxc-technology/arca/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.1
 [0.34.0]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/dxc-technology/arca/compare/v0.32.1...v0.33.0

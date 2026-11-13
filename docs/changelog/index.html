@@ -1267,7 +1267,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0350-2026-11-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.35.0 — 2026-11-13
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.35.0 — 2026-11-13">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3515,7 +3526,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0350-2026-11-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.35.0 — 2026-11-13
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.35.0 — 2026-11-13">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -5717,7 +5739,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.34.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.35.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0350-2026-11-13"><a href="https://github.com/dxc-technology/arca/compare/v0.34.1...v0.35.0">0.35.0</a> — 2026-11-13<a class="headerlink" href="#0350-2026-11-13" title="Permanent link">&para;</a></h2>
 <h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Virtual-hosted requests are authorized on the bucket they address.</strong> With <code>[server] domain</code> set, the auth middleware evaluated grants on the path the client sent, before the rewrite to path style, while the handler ran on the rewritten one. A user allowed <code>s3:ListAllMyBuckets</code> could list any bucket with <code>GET /</code> and <code>Host: &lt;bucket&gt;.&lt;domain&gt;</code>, and a key path starting with the name of the user's own bucket (<code>/&lt;own-bucket&gt;/x</code>) borrowed that bucket's grant to read, write or delete <code>x</code> in the host's bucket. Grants are now evaluated on the routed request; the signature is still verified on the URI the client signed. This also lets a non-root user work on their own bucket virtual-hosted, which was refused before (<code>PUT /key</code> was checked as CreateBucket on <code>key</code>).</li>
