@@ -135,7 +135,7 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 19,
-        description: "Granular S3 actions: rename the bucket-encryption actions, widen S3ReadOnlyAccess",
+        description: "Granular S3 actions: migrate grants, widen S3ReadOnlyAccess",
         sql: include_str!("migrations/0019_granular_s3_actions.sql"),
     },
 ];
@@ -204,6 +204,45 @@ async fn current_version(pool: &sqlx_postgres::PgPool) -> Result<i32, ArcaError>
 }
 
 /// Applies all pending migrations.
+/// The migration that introduced the granular S3 actions.
+const GRANULAR_ACTIONS_VERSION: i32 = 19;
+
+/// Rewrites every stored grant with `policy::migrate_legacy_actions`, so that
+/// the granular S3 actions neither widen an Allow nor narrow a Deny (same as
+/// SQLite migration 29).
+async fn migrate_legacy_grants(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+) -> Result<(), ArcaError> {
+    use sqlx_core::row::Row;
+    let rows = sqlx_core::query::query("SELECT grant_id, document::text FROM grants")
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("reading grants to migrate: {e}")))?;
+    for row in rows {
+        let grant_id: String = row.get(0);
+        let document: String = row.get(1);
+        let mut doc = match arca_core::policy::parse_policy_document(&document) {
+            Ok(doc) => doc,
+            Err(e) => {
+                tracing::warn!(grant_id, error = %e, "Grant document not migrated: unparsable");
+                continue;
+            }
+        };
+        if arca_core::policy::migrate_legacy_actions(&mut doc) {
+            let json = serde_json::to_string(&doc)
+                .map_err(|e| ArcaError::Internal(format!("serializing grant {grant_id}: {e}")))?;
+            sqlx_core::query::query("UPDATE grants SET document = $1::jsonb WHERE grant_id = $2")
+                .bind(json)
+                .bind(&grant_id)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("migrating grant {grant_id}: {e}")))?;
+            tracing::info!(grant_id, "Grant migrated to the granular S3 actions");
+        }
+    }
+    Ok(())
+}
+
 async fn run_migrations(pool: &sqlx_postgres::PgPool) -> Result<(), ArcaError> {
     ensure_migrations_table(pool).await?;
     let current = current_version(pool).await?;
@@ -228,6 +267,9 @@ async fn run_migrations(pool: &sqlx_postgres::PgPool) -> Result<(), ArcaError> {
             .execute(&mut *tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("migration v{}: {e}", migration.version)))?;
+        if migration.version == GRANULAR_ACTIONS_VERSION {
+            migrate_legacy_grants(&mut tx).await?;
+        }
 
         sqlx_core::query::query(
             "INSERT INTO _migrations (version, description) VALUES ($1, $2)",

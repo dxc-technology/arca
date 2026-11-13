@@ -487,6 +487,141 @@ mod statement_or_array {
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Migration of grants written before the granular S3 actions
+// ---------------------------------------------------------------------------
+
+/// The granular actions each coarse action used to cover, when every bucket
+/// subresource PUT was checked as `s3:CreateBucket`, every bucket GET as
+/// `s3:ListBucket`, every object GET as `s3:GetObject`, and so on.
+const LEGACY_COVERAGE: &[(&str, &[&str])] = &[
+    (
+        actions::S3_GET_OBJECT,
+        &[
+            actions::S3_GET_OBJECT_VERSION,
+            actions::S3_GET_OBJECT_TAGGING,
+            actions::S3_GET_OBJECT_VERSION_TAGGING,
+            actions::S3_GET_OBJECT_RETENTION,
+            actions::S3_GET_OBJECT_LEGAL_HOLD,
+            actions::S3_GET_OBJECT_ATTRIBUTES,
+            actions::S3_GET_OBJECT_VERSION_ATTRIBUTES,
+            actions::S3_LIST_MULTIPART_UPLOAD_PARTS,
+        ],
+    ),
+    (
+        actions::S3_PUT_OBJECT,
+        &[
+            actions::S3_PUT_OBJECT_TAGGING,
+            actions::S3_PUT_OBJECT_VERSION_TAGGING,
+            actions::S3_PUT_OBJECT_RETENTION,
+            actions::S3_PUT_OBJECT_LEGAL_HOLD,
+        ],
+    ),
+    (
+        actions::S3_DELETE_OBJECT,
+        &[
+            actions::S3_DELETE_OBJECT_VERSION,
+            actions::S3_DELETE_OBJECT_TAGGING,
+            actions::S3_DELETE_OBJECT_VERSION_TAGGING,
+            actions::S3_ABORT_MULTIPART_UPLOAD,
+        ],
+    ),
+    (
+        actions::S3_LIST_BUCKET,
+        &[
+            actions::S3_LIST_BUCKET_VERSIONS,
+            actions::S3_LIST_BUCKET_MULTIPART_UPLOADS,
+            actions::S3_GET_BUCKET_VERSIONING,
+            actions::S3_GET_LIFECYCLE_CONFIGURATION,
+            actions::S3_GET_BUCKET_TAGGING,
+            actions::S3_GET_REPLICATION_CONFIGURATION,
+            actions::S3_GET_BUCKET_NOTIFICATION,
+            actions::S3_GET_BUCKET_OBJECT_LOCK_CONFIGURATION,
+            actions::ARCA_GET_BUCKET_COMPRESSION,
+        ],
+    ),
+    (
+        actions::S3_CREATE_BUCKET,
+        &[
+            actions::S3_PUT_BUCKET_VERSIONING,
+            actions::S3_PUT_LIFECYCLE_CONFIGURATION,
+            actions::S3_PUT_BUCKET_TAGGING,
+            actions::S3_PUT_REPLICATION_CONFIGURATION,
+            actions::S3_PUT_BUCKET_NOTIFICATION,
+            actions::S3_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION,
+            actions::ARCA_PUT_BUCKET_COMPRESSION,
+        ],
+    ),
+    (
+        actions::S3_DELETE_BUCKET,
+        &[
+            actions::S3_PUT_BUCKET_TAGGING,
+            actions::S3_PUT_REPLICATION_CONFIGURATION,
+            actions::S3_PUT_LIFECYCLE_CONFIGURATION,
+            actions::ARCA_PUT_BUCKET_COMPRESSION,
+        ],
+    ),
+];
+
+/// Rewrites a grant written before the granular S3 actions (SQLite schema
+/// migration 29, PostgreSQL 19) so that no statement gains reach and no Deny
+/// loses any. Returns whether the document changed.
+///
+/// - **Deny** statements gain every granular action their coarse actions used
+///   to cover: `Deny s3:GetObject` kept versions, tags and retention out of
+///   reach, and must keep doing so now that those have their own actions.
+/// - **Allow** statements are not widened. They narrow to AWS semantics on
+///   their own (the point of the change), and only the renamed encryption
+///   actions are carried over: `s3:GetBucketEncryption` becomes
+///   `s3:GetEncryptionConfiguration`, `s3:PutBucketEncryption` becomes
+///   `s3:PutEncryptionConfiguration`, and `s3:DeleteBucketEncryption` is
+///   dropped, since its AWS action (`PutEncryptionConfiguration`) would also
+///   allow setting the configuration.
+/// - In a Deny, all three old encryption names become their AWS actions.
+pub fn migrate_legacy_actions(doc: &mut PolicyDocument) -> bool {
+    const OLD_GET_ENCRYPTION: &str = "s3:GetBucketEncryption";
+    const OLD_PUT_ENCRYPTION: &str = "s3:PutBucketEncryption";
+    const OLD_DELETE_ENCRYPTION: &str = "s3:DeleteBucketEncryption";
+
+    let mut changed = false;
+    for statement in &mut doc.statement {
+        let mut migrated: Vec<String> = Vec::new();
+        let push = |action: &str, list: &mut Vec<String>| {
+            if !list.iter().any(|a| a == action) {
+                list.push(action.to_string());
+            }
+        };
+        for action in &statement.action {
+            match (statement.effect, action.as_str()) {
+                (_, OLD_GET_ENCRYPTION) => {
+                    push(actions::S3_GET_ENCRYPTION_CONFIGURATION, &mut migrated)
+                }
+                (_, OLD_PUT_ENCRYPTION) | (Effect::Deny, OLD_DELETE_ENCRYPTION) => {
+                    push(actions::S3_PUT_ENCRYPTION_CONFIGURATION, &mut migrated)
+                }
+                (Effect::Allow, OLD_DELETE_ENCRYPTION) => {}
+                (effect, other) => {
+                    push(other, &mut migrated);
+                    if effect == Effect::Deny {
+                        if let Some((_, covered)) =
+                            LEGACY_COVERAGE.iter().find(|(coarse, _)| *coarse == other)
+                        {
+                            for granular in *covered {
+                                push(granular, &mut migrated);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if migrated != statement.action {
+            statement.action = migrated;
+            changed = true;
+        }
+    }
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1231,5 +1366,67 @@ mod tests {
             ),
             Evaluation::NoMatch
         );
+    }
+    fn statement_actions(json: &str) -> Vec<Vec<String>> {
+        let mut doc = parse_policy_document(json).unwrap();
+        migrate_legacy_actions(&mut doc);
+        doc.statement.into_iter().map(|s| s.action).collect()
+    }
+
+    /// A Deny written when `s3:GetObject` covered versions, tags and
+    /// retention must keep covering them: otherwise `Allow s3:*` plus
+    /// `Deny s3:GetObject` would let `?versionId=` read the denied object.
+    #[test]
+    fn migrated_deny_keeps_its_reach() {
+        let json = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":["s3:GetObject","s3:CreateBucket"],"Resource":["arn:aws:s3:::b/*"]}]}"#;
+        let mut doc = parse_policy_document(json).unwrap();
+        assert!(migrate_legacy_actions(&mut doc));
+        for action in [
+            "s3:GetObject",
+            "s3:GetObjectVersion",
+            "s3:GetObjectTagging",
+            "s3:GetObjectRetention",
+            "s3:ListMultipartUploadParts",
+            "s3:CreateBucket",
+            "s3:PutLifecycleConfiguration",
+            "s3:PutBucketVersioning",
+        ] {
+            assert_eq!(evaluate_policy(&doc, action, "arn:aws:s3:::b/k"), Evaluation::Deny, "{action}");
+        }
+        assert!(validate_policy_document(&doc).is_empty());
+    }
+
+    /// An Allow is never widened: it keeps its own actions, and the coarse
+    /// ones no longer cover the granular operations.
+    #[test]
+    fn migrated_allow_is_not_widened() {
+        let json = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:CreateBucket"],"Resource":["*"]}]}"#;
+        let mut doc = parse_policy_document(json).unwrap();
+        assert!(!migrate_legacy_actions(&mut doc));
+        assert_eq!(doc.statement[0].action, ["s3:GetObject", "s3:CreateBucket"]);
+    }
+
+    #[test]
+    fn old_encryption_names_are_renamed_without_widening_an_allow() {
+        let allow = r#"{"Version":"2012-10-17","Statement":[
+            {"Effect":"Allow","Action":["s3:GetBucketEncryption","s3:PutBucketEncryption","s3:DeleteBucketEncryption"],"Resource":["*"]},
+            {"Effect":"Allow","Action":["s3:DeleteBucketEncryption","s3:GetObject"],"Resource":["*"]}]}"#;
+        assert_eq!(
+            statement_actions(allow),
+            [
+                vec!["s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration"],
+                vec!["s3:GetObject"],
+            ]
+        );
+        let deny = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":["s3:DeleteBucketEncryption"],"Resource":["*"]}]}"#;
+        assert_eq!(statement_actions(deny), [vec!["s3:PutEncryptionConfiguration"]]);
+    }
+
+    #[test]
+    fn migration_is_idempotent() {
+        let json = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":["s3:DeleteObject","s3:GetBucketEncryption"],"Resource":["*"]}]}"#;
+        let mut doc = parse_policy_document(json).unwrap();
+        assert!(migrate_legacy_actions(&mut doc));
+        assert!(!migrate_legacy_actions(&mut doc));
     }
 }

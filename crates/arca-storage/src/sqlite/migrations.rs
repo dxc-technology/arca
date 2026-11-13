@@ -593,28 +593,19 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 29,
-        description: "Granular S3 actions: rename the bucket-encryption actions, widen S3ReadOnlyAccess",
+        description: "Granular S3 actions: migrate grants, widen S3ReadOnlyAccess",
         // Bucket subresources and object tagging, versions, retention, ... now
         // have their own AWS actions instead of riding on ListBucket /
-        // CreateBucket / GetObject. Two consequences for stored grants:
-        //
-        // - Arca's own s3:Get/Put/DeleteBucketEncryption become AWS's
-        //   s3:GetEncryptionConfiguration / s3:PutEncryptionConfiguration
-        //   (deleting needs the Put action). Renamed in every grant, so a grant
-        //   keeps doing what it did and still validates.
-        // - The built-in S3ReadOnlyAccess (not editable by users) gains the
-        //   read actions of everything it could read before.
+        // CreateBucket / GetObject. Stored grants are rewritten by
+        // `policy::migrate_legacy_actions` (see `run_migrations`): Deny
+        // statements keep their reach, Allow statements are not widened, and
+        // the old bucket-encryption names become the AWS ones. The built-in
+        // S3ReadOnlyAccess (not editable by users) gains the read actions of
+        // everything it could read before.
         //
         // updated_at is left alone: every node of a cluster runs the same
         // rewrite, so the copies stay identical.
         sql: "
-            UPDATE grants SET document =
-                REPLACE(REPLACE(REPLACE(document,
-                    '\"s3:GetBucketEncryption\"', '\"s3:GetEncryptionConfiguration\"'),
-                    '\"s3:PutBucketEncryption\"', '\"s3:PutEncryptionConfiguration\"'),
-                    '\"s3:DeleteBucketEncryption\"', '\"s3:PutEncryptionConfiguration\"')
-            WHERE document LIKE '%BucketEncryption\"%';
-
             UPDATE grants SET document = '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:ListAllMyBuckets\",\"s3:ListBucket\",\"s3:ListBucketVersions\",\"s3:ListBucketMultipartUploads\",\"s3:GetBucketLocation\",\"s3:GetEncryptionConfiguration\",\"s3:GetBucketVersioning\",\"s3:GetLifecycleConfiguration\",\"s3:GetBucketTagging\",\"s3:GetReplicationConfiguration\",\"s3:GetBucketNotification\",\"s3:GetBucketObjectLockConfiguration\",\"arca:GetBucketCompression\",\"s3:GetObject\",\"s3:GetObjectVersion\",\"s3:GetObjectAttributes\",\"s3:GetObjectVersionAttributes\",\"s3:GetObjectTagging\",\"s3:GetObjectVersionTagging\",\"s3:GetObjectRetention\",\"s3:GetObjectLegalHold\",\"s3:ListMultipartUploadParts\"],\"Resource\":[\"*\"]}]}'
             WHERE grant_id = 'grant-s3-read-only';
         ",
@@ -641,6 +632,37 @@ fn current_version(conn: &Connection) -> rusqlite::Result<u32> {
     )
 }
 
+/// The migration that introduced the granular S3 actions.
+const GRANULAR_ACTIONS_VERSION: u32 = 29;
+
+/// Rewrites every stored grant with `policy::migrate_legacy_actions`, so that
+/// the granular S3 actions neither widen an Allow nor narrow a Deny.
+fn migrate_legacy_grants(conn: &Connection) -> rusqlite::Result<()> {
+    let grants: Vec<(String, String)> = conn
+        .prepare("SELECT grant_id, document FROM grants")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (grant_id, document) in grants {
+        let mut doc = match arca_core::policy::parse_policy_document(&document) {
+            Ok(doc) => doc,
+            Err(e) => {
+                tracing::warn!(grant_id, error = %e, "Grant document not migrated: unparsable");
+                continue;
+            }
+        };
+        if arca_core::policy::migrate_legacy_actions(&mut doc) {
+            let json = serde_json::to_string(&doc)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            conn.execute(
+                "UPDATE grants SET document = ?1 WHERE grant_id = ?2",
+                rusqlite::params![json, grant_id],
+            )?;
+            tracing::info!(grant_id, "Grant migrated to the granular S3 actions");
+        }
+    }
+    Ok(())
+}
+
 /// Applies all pending migrations to the database.
 ///
 /// This function is meant to be called on a synchronous `rusqlite::Connection`
@@ -662,6 +684,9 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
 
         let tx = conn.unchecked_transaction()?;
         tx.execute_batch(migration.sql)?;
+        if migration.version == GRANULAR_ACTIONS_VERSION {
+            migrate_legacy_grants(&tx)?;
+        }
         tx.execute(
             "INSERT INTO _migrations (version, description, applied_at) VALUES (?1, ?2, ?3)",
             params![
@@ -769,7 +794,7 @@ mod tests {
     }
 
     /// A grant written before v29 keeps its bucket-encryption permissions
-    /// under the AWS names.
+    /// under the AWS names (the details are tested in arca-core).
     #[test]
     fn old_encryption_actions_are_renamed() {
         let conn = open_memory_db();
@@ -780,15 +805,10 @@ mod tests {
             [r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketEncryption","s3:PutBucketEncryption","s3:DeleteBucketEncryption","s3:GetObject"],"Resource":["*"]}]}"#],
         )
         .unwrap();
-        conn.execute_batch(MIGRATIONS.last().unwrap().sql).unwrap();
+        migrate_legacy_grants(&conn).unwrap();
         assert_eq!(
             grant_actions(&conn, "g-old"),
-            [
-                "s3:GetEncryptionConfiguration",
-                "s3:PutEncryptionConfiguration",
-                "s3:PutEncryptionConfiguration",
-                "s3:GetObject"
-            ]
+            ["s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration", "s3:GetObject"]
         );
     }
 }
