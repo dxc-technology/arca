@@ -14,6 +14,7 @@ use arca_core::types::Credential;
 use arca_core::{S3Error, S3ErrorCode};
 
 use super::identity::AuthenticatedIdentity;
+use crate::s3_operation::{split_routed_path, Operation};
 use crate::state::AppState;
 use crate::xml::error_response::s3_error_response;
 
@@ -269,7 +270,7 @@ pub async fn auth_middleware(
     if !identity.is_root() {
         let effective_path = request.uri().path().to_string();
         let effective_query = request.uri().query().unwrap_or("");
-        match determine_s3_action_resource(&method, &effective_path, effective_query) {
+        match determine_s3_action_resource(request.method(), &effective_path, effective_query) {
             Ok(Some((action, resource))) => {
                 let result =
                     policy::evaluate_grants(&identity.effective_policies, action, &resource);
@@ -340,91 +341,27 @@ async fn resolve_identity(
 /// the bucket would be both too strict for prefix grants and too lax for a
 /// grant on the bucket ARN alone).
 ///
-/// Bucket and key are percent-decoded exactly as the router's `Path` extractor
-/// decodes them, so the policy sees the names the handler acts on: matching
-/// the raw path would let `privat%65/s` dodge a Deny on `private/*`. `Err`
-/// means a segment does not decode to UTF-8 and the request must be denied.
+/// The operation comes from [`Operation::classify`], the classifier the
+/// handlers dispatch on, so what is authorized is what runs. Bucket and key
+/// are percent-decoded exactly as the router's `Path` extractor decodes them,
+/// so the policy sees the names the handler acts on: matching the raw path
+/// would let `privat%65/s` dodge a Deny on `private/*`. `Err` means a segment
+/// does not decode to UTF-8 and the request must be denied.
 fn determine_s3_action_resource(
-    method: &str,
+    method: &http::Method,
     path: &str,
     query: &str,
 ) -> Result<Option<(&'static str, String)>, ()> {
-    use arca_core::policy::actions::*;
-
-    // Split /{bucket}/{key...} on the raw path, as the router matches it, and
-    // only then decode each part: an encoded `%2F` stays inside its segment.
-    let trimmed = path.strip_prefix('/').unwrap_or(path);
-    let (raw_bucket, raw_key) = match trimmed.split_once('/') {
-        Some((b, k)) => (b, Some(k)),
-        None => (trimmed, None),
+    let (bucket, key) = split_routed_path(path).ok_or(())?;
+    let operation = Operation::classify(method, &bucket, key.as_deref(), query);
+    let Some(action) = operation.action() else {
+        return Ok(None);
     };
-    let decode = |s| urlencoding::decode(s).map_err(|_| ());
-    let bucket = decode(raw_bucket)?;
-    let key = raw_key.map(decode).transpose()?;
-
-    // Service-level: GET /
-    if bucket.is_empty() {
-        return Ok(Some((S3_LIST_ALL_MY_BUCKETS, "*".to_string())));
-    }
-
-    // Object-level operations (bucket + key present)
-    if let Some(key) = key {
-        if !key.is_empty() {
-            let resource = format!("arn:aws:s3:::{bucket}/{key}");
-            let action = match method {
-                "GET" | "HEAD" => S3_GET_OBJECT,
-                "PUT" => S3_PUT_OBJECT,
-                "DELETE" => S3_DELETE_OBJECT,
-                "POST" => {
-                    if query.contains("uploads") {
-                        S3_PUT_OBJECT // CreateMultipartUpload / CompleteMultipartUpload
-                    } else {
-                        S3_PUT_OBJECT
-                    }
-                }
-                _ => S3_GET_OBJECT,
-            };
-            return Ok(Some((action, resource)));
-        }
-    }
-
-    // Bucket-level operations
-    let resource = format!("arn:aws:s3:::{bucket}");
-    let action = match method {
-        "PUT" => {
-            if query.contains("encryption") {
-                S3_PUT_BUCKET_ENCRYPTION
-            } else {
-                S3_CREATE_BUCKET
-            }
-        }
-        "GET" | "HEAD" => {
-            if query.contains("encryption") {
-                S3_GET_BUCKET_ENCRYPTION
-            } else if query.contains("location") {
-                S3_GET_BUCKET_LOCATION
-            } else if method == "HEAD" {
-                S3_LIST_BUCKET
-            } else {
-                S3_LIST_BUCKET
-            }
-        }
-        "DELETE" => {
-            if query.contains("encryption") {
-                S3_DELETE_BUCKET_ENCRYPTION
-            } else {
-                S3_DELETE_BUCKET
-            }
-        }
-        "POST" => {
-            if crate::handlers::bucket::is_delete_objects_query(query) {
-                return Ok(None);
-            }
-            S3_LIST_BUCKET
-        }
-        _ => S3_LIST_BUCKET,
+    let resource = match (&operation, key) {
+        (Operation::ListBuckets, _) => "*".to_string(),
+        (_, Some(key)) if !key.is_empty() => format!("arn:aws:s3:::{bucket}/{key}"),
+        _ => format!("arn:aws:s3:::{bucket}"),
     };
-
     Ok(Some((action, resource)))
 }
 
@@ -584,7 +521,7 @@ mod tests {
     #[test]
     fn the_service_root_is_list_buckets() {
         assert_eq!(
-            determine_s3_action_resource("GET", "/", ""),
+            determine_s3_action_resource(&http::Method::GET, "/", ""),
             Ok(Some(("s3:ListAllMyBuckets", "*".to_string())))
         );
     }
@@ -594,7 +531,7 @@ mod tests {
     #[test]
     fn a_rewritten_bucket_root_is_list_bucket_on_that_bucket() {
         assert_eq!(
-            determine_s3_action_resource("GET", "/finance", "list-type=2"),
+            determine_s3_action_resource(&http::Method::GET, "/finance", "list-type=2"),
             Ok(Some(("s3:ListBucket", "arn:aws:s3:::finance".to_string())))
         );
     }
@@ -602,7 +539,7 @@ mod tests {
     #[test]
     fn a_rewritten_key_is_authorized_in_the_host_bucket() {
         assert_eq!(
-            determine_s3_action_resource("PUT", "/finance/own/x", ""),
+            determine_s3_action_resource(&http::Method::PUT, "/finance/own/x", ""),
             Ok(Some(("s3:PutObject", "arn:aws:s3:::finance/own/x".to_string())))
         );
     }
@@ -613,11 +550,11 @@ mod tests {
     #[test]
     fn an_encoded_key_is_authorized_decoded() {
         assert_eq!(
-            determine_s3_action_resource("GET", "/b/privat%65/s", ""),
+            determine_s3_action_resource(&http::Method::GET, "/b/privat%65/s", ""),
             Ok(Some(("s3:GetObject", "arn:aws:s3:::b/private/s".to_string())))
         );
         assert_eq!(
-            determine_s3_action_resource("PUT", "/b/a%20b%2Fc", ""),
+            determine_s3_action_resource(&http::Method::PUT, "/b/a%20b%2Fc", ""),
             Ok(Some(("s3:PutObject", "arn:aws:s3:::b/a b/c".to_string())))
         );
     }
@@ -625,11 +562,11 @@ mod tests {
     #[test]
     fn an_encoded_bucket_is_authorized_decoded() {
         assert_eq!(
-            determine_s3_action_resource("GET", "/fin%61nce/x", ""),
+            determine_s3_action_resource(&http::Method::GET, "/fin%61nce/x", ""),
             Ok(Some(("s3:GetObject", "arn:aws:s3:::finance/x".to_string())))
         );
         assert_eq!(
-            determine_s3_action_resource("DELETE", "/fin%61nce", ""),
+            determine_s3_action_resource(&http::Method::DELETE, "/fin%61nce", ""),
             Ok(Some(("s3:DeleteBucket", "arn:aws:s3:::finance".to_string())))
         );
     }
@@ -638,21 +575,21 @@ mod tests {
     /// `Path` extractor anyway; the middleware denies it rather than guess.
     #[test]
     fn an_undecodable_path_is_denied() {
-        assert_eq!(determine_s3_action_resource("GET", "/b/%FF", ""), Err(()));
-        assert_eq!(determine_s3_action_resource("GET", "/%FF/k", ""), Err(()));
+        assert_eq!(determine_s3_action_resource(&http::Method::GET, "/b/%FF", ""), Err(()));
+        assert_eq!(determine_s3_action_resource(&http::Method::GET, "/%FF/k", ""), Err(()));
     }
 
     #[test]
     fn delete_objects_is_authorized_per_key_by_the_handler() {
         for query in ["delete", "delete=", "delete&x=1", "x=1&delete"] {
-            assert_eq!(determine_s3_action_resource("POST", "/b", query), Ok(None), "{query}");
+            assert_eq!(determine_s3_action_resource(&http::Method::POST, "/b", query), Ok(None), "{query}");
         }
     }
 
     #[test]
     fn another_bucket_post_is_still_checked() {
         assert_eq!(
-            determine_s3_action_resource("POST", "/b", "undelete"),
+            determine_s3_action_resource(&http::Method::POST, "/b", "undelete"),
             Ok(Some(("s3:ListBucket", "arn:aws:s3:::b".to_string())))
         );
     }

@@ -3872,6 +3872,7 @@ To create a credential for a different user, use
 <a id="__codelineno-64-11" name="__codelineno-64-11" href="#__codelineno-64-11"></a><span class="p">}</span>
 </code></pre></div>
 <p><strong>Supported actions</strong>:</p>
+<p>Action names follow AWS, and so does the rule that removing a configuration needs the action that writes it. A query string naming a subresource Arca does not implement (<code>?cors</code>, <code>?acl</code>, ...) is answered <code>501 Not Implemented</code>.</p>
 <table>
 <thead>
 <tr>
@@ -3890,47 +3891,135 @@ To create a credential for a different user, use
 </tr>
 <tr>
 <td><code>s3:CreateBucket</code></td>
-<td>Create bucket</td>
+<td>CreateBucket</td>
 </tr>
 <tr>
 <td><code>s3:DeleteBucket</code></td>
-<td>Delete bucket</td>
-</tr>
-<tr>
-<td><code>s3:ListBucket</code></td>
-<td>List objects in a bucket</td>
+<td>DeleteBucket</td>
 </tr>
 <tr>
 <td><code>s3:ListAllMyBuckets</code></td>
-<td>List all buckets</td>
+<td>ListBuckets</td>
+</tr>
+<tr>
+<td><code>s3:ListBucket</code></td>
+<td>ListObjects, ListObjectsV2, HeadBucket</td>
+</tr>
+<tr>
+<td><code>s3:ListBucketVersions</code></td>
+<td>ListObjectVersions</td>
+</tr>
+<tr>
+<td><code>s3:ListBucketMultipartUploads</code></td>
+<td>ListMultipartUploads</td>
 </tr>
 <tr>
 <td><code>s3:GetBucketLocation</code></td>
-<td>Get bucket location</td>
+<td>GetBucketLocation</td>
 </tr>
 <tr>
-<td><code>s3:GetBucketEncryption</code></td>
-<td>Get bucket encryption configuration</td>
+<td><code>s3:GetEncryptionConfiguration</code></td>
+<td>GetBucketEncryption</td>
 </tr>
 <tr>
-<td><code>s3:PutBucketEncryption</code></td>
-<td>Set bucket encryption configuration</td>
+<td><code>s3:PutEncryptionConfiguration</code></td>
+<td>PutBucketEncryption, DeleteBucketEncryption</td>
 </tr>
 <tr>
-<td><code>s3:DeleteBucketEncryption</code></td>
-<td>Delete bucket encryption configuration</td>
+<td><code>s3:GetBucketVersioning</code> / <code>s3:PutBucketVersioning</code></td>
+<td>GetBucketVersioning / PutBucketVersioning</td>
+</tr>
+<tr>
+<td><code>s3:GetLifecycleConfiguration</code></td>
+<td>GetBucketLifecycleConfiguration</td>
+</tr>
+<tr>
+<td><code>s3:PutLifecycleConfiguration</code></td>
+<td>PutBucketLifecycleConfiguration, DeleteBucketLifecycle</td>
+</tr>
+<tr>
+<td><code>s3:GetBucketTagging</code></td>
+<td>GetBucketTagging</td>
+</tr>
+<tr>
+<td><code>s3:PutBucketTagging</code></td>
+<td>PutBucketTagging, DeleteBucketTagging</td>
+</tr>
+<tr>
+<td><code>s3:GetReplicationConfiguration</code></td>
+<td>GetBucketReplication</td>
+</tr>
+<tr>
+<td><code>s3:PutReplicationConfiguration</code></td>
+<td>PutBucketReplication, DeleteBucketReplication</td>
+</tr>
+<tr>
+<td><code>s3:GetBucketNotification</code> / <code>s3:PutBucketNotification</code></td>
+<td>GetBucketNotificationConfiguration / PutBucketNotificationConfiguration</td>
+</tr>
+<tr>
+<td><code>s3:GetBucketObjectLockConfiguration</code> / <code>s3:PutBucketObjectLockConfiguration</code></td>
+<td>GetObjectLockConfiguration / PutObjectLockConfiguration</td>
+</tr>
+<tr>
+<td><code>arca:GetBucketCompression</code></td>
+<td><code>GET /{bucket}?compression</code> (Arca extension)</td>
+</tr>
+<tr>
+<td><code>arca:PutBucketCompression</code></td>
+<td><code>PUT</code> and <code>DELETE /{bucket}?compression</code></td>
 </tr>
 <tr>
 <td><code>s3:GetObject</code></td>
-<td>Get (download) an object</td>
+<td>GetObject, HeadObject (also the source of CopyObject and UploadPartCopy)</td>
+</tr>
+<tr>
+<td><code>s3:GetObjectVersion</code></td>
+<td>GetObject, HeadObject with <code>versionId</code> (and a copy source naming a version)</td>
 </tr>
 <tr>
 <td><code>s3:PutObject</code></td>
-<td>Put (upload) an object</td>
+<td>PutObject, CopyObject, CreateMultipartUpload, UploadPart, UploadPartCopy, CompleteMultipartUpload</td>
 </tr>
 <tr>
 <td><code>s3:DeleteObject</code></td>
-<td>Delete an object (checked per key in DeleteObjects)</td>
+<td>DeleteObject (checked per key in DeleteObjects)</td>
+</tr>
+<tr>
+<td><code>s3:DeleteObjectVersion</code></td>
+<td>DeleteObject with <code>versionId</code> (and DeleteObjects entries naming a version)</td>
+</tr>
+<tr>
+<td><code>s3:GetObjectAttributes</code> / <code>s3:GetObjectVersionAttributes</code></td>
+<td>GetObjectAttributes, without / with <code>versionId</code></td>
+</tr>
+<tr>
+<td><code>s3:GetObjectTagging</code> / <code>s3:GetObjectVersionTagging</code></td>
+<td>GetObjectTagging, without / with <code>versionId</code></td>
+</tr>
+<tr>
+<td><code>s3:PutObjectTagging</code> / <code>s3:PutObjectVersionTagging</code></td>
+<td>PutObjectTagging, without / with <code>versionId</code>; <code>s3:PutObjectTagging</code> is also needed for <code>x-amz-tagging</code> on PutObject and CreateMultipartUpload, and on CopyObject with <code>x-amz-tagging-directive: REPLACE</code></td>
+</tr>
+<tr>
+<td><code>s3:DeleteObjectTagging</code> / <code>s3:DeleteObjectVersionTagging</code></td>
+<td>DeleteObjectTagging, without / with <code>versionId</code></td>
+</tr>
+<tr>
+<td><code>s3:ListMultipartUploadParts</code></td>
+<td>ListParts</td>
+</tr>
+<tr>
+<td><code>s3:AbortMultipartUpload</code></td>
+<td>AbortMultipartUpload</td>
+</tr>
+<tr>
+<td><code>s3:GetObjectRetention</code> / <code>s3:PutObjectRetention</code></td>
+<td>GetObjectRetention / PutObjectRetention; <code>s3:PutObjectRetention</code> is also needed for <code>x-amz-object-lock-mode</code> / <code>-retain-until-date</code> on PutObject</td>
+</tr>
+<tr>
+<td><code>s3:GetObjectLegalHold</code> / <code>s3:PutObjectLegalHold</code></td>
+<td>GetObjectLegalHold / PutObjectLegalHold; <code>s3:PutObjectLegalHold</code> is also needed for a legal-hold header on PutObject</td>
 </tr>
 <tr>
 <td><code>s3:BypassGovernanceRetention</code></td>

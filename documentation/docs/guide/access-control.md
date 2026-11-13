@@ -78,9 +78,11 @@ Grants can be attached directly to users or to teams. Three built-in grants are 
 |-------|-------------|
 | **AdministratorAccess** | Full access to all operations (S3 + Admin API) |
 | **S3FullAccess** | Full access to all S3 operations |
-| **S3ReadOnlyAccess** | Read-only access to S3 (GetObject, ListBucket, ListAllMyBuckets, GetBucketLocation, GetBucketEncryption) |
+| **S3ReadOnlyAccess** | Read-only access to S3: every `Get*` and `List*` S3 action (objects and their versions, tags, attributes, retention and legal hold, bucket listings and configurations) plus `arca:GetBucketCompression` |
 
 Built-in grants cannot be modified or deleted.
+
+Every S3 operation maps to its AWS action: a bucket configuration has its own pair (`s3:GetLifecycleConfiguration` / `s3:PutLifecycleConfiguration`, `s3:GetBucketVersioning` / `s3:PutBucketVersioning`, ...), object tags, retention and legal hold have theirs, and a request naming a `versionId` needs the `*Version*` variant (`s3:GetObjectVersion`, `s3:DeleteObjectVersion`). `s3:CreateBucket` only creates buckets, `s3:ListBucket` only lists objects and `s3:GetObject` only reads object content. The full list is in the [Admin API reference](../reference/admin-api.md#policy-document-format).
 
 ## Authentication Flow
 
@@ -161,12 +163,14 @@ Policy evaluation follows the standard IAM logic:
 
 ## Operations That Touch Other Objects
 
-A request is authorized on the bucket and key it addresses: for a virtual-hosted request (`Host: bucket.<domain>`, with `[server] domain` set) that is the bucket in the host and the key in the path, exactly as the server executes it. Some operations also read or destroy objects named elsewhere in the request, and each of those objects is checked too:
+A request is authorized on the bucket and key it addresses, percent-decoded as the server decodes them (`privat%65/s` is checked as `private/s`): for a virtual-hosted request (`Host: bucket.<domain>`, with `[server] domain` set) that is the bucket in the host and the key in the path, exactly as the server executes it. Some operations also read or destroy objects named elsewhere in the request, and each of those objects is checked too:
 
 | Operation | Additional permission |
 |-----------|-----------------------|
-| CopyObject, UploadPartCopy | `s3:GetObject` on the `x-amz-copy-source` object |
-| DeleteObjects | `s3:DeleteObject` on every key in the body, instead of a single check on the bucket: the keys the caller may not delete come back as `AccessDenied` entries of the `DeleteResult`, and a request in which no key is deletable is refused with `403` |
+| CopyObject, UploadPartCopy | `s3:GetObject` on the `x-amz-copy-source` object (`s3:GetObjectVersion` when it names a version) |
+| DeleteObjects | `s3:DeleteObject` on every key in the body (`s3:DeleteObjectVersion` for an entry with a `VersionId`), instead of a single check on the bucket: the keys the caller may not delete come back as `AccessDenied` entries of the `DeleteResult`, and a request in which no key is deletable is refused with `403` |
+| `x-amz-tagging` on PutObject or CreateMultipartUpload, CopyObject with `x-amz-tagging-directive: REPLACE` | `s3:PutObjectTagging` on the object |
+| Object-lock headers on PutObject (`x-amz-object-lock-mode`, `-retain-until-date`, legal hold) | `s3:PutObjectRetention` / `s3:PutObjectLegalHold` on the object |
 | `x-amz-bypass-governance-retention: true` (DeleteObject of a version, PutObjectRetention) | `s3:BypassGovernanceRetention` on the object; without it the header is ignored and GOVERNANCE retention applies |
 | `POST /admin/archive` | `arca:CreateArchive` to use the endpoint, plus `s3:GetObject` on every requested key: one unreadable key refuses the whole archive |
 

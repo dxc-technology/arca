@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod middleware;
 pub mod replication;
 pub mod router;
+pub mod s3_operation;
 pub mod state;
 pub mod xml;
 

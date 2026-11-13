@@ -133,6 +133,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add the object_seq_local sequence (single-node write gate, decision H13)",
         sql: include_str!("migrations/0018_local_object_seq.sql"),
     },
+    Migration {
+        version: 19,
+        description: "Granular S3 actions: rename the bucket-encryption actions, widen S3ReadOnlyAccess",
+        sql: include_str!("migrations/0019_granular_s3_actions.sql"),
+    },
 ];
 
 impl PgStore {

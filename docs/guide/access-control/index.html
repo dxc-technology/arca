@@ -1745,11 +1745,12 @@
 </tr>
 <tr>
 <td><strong>S3ReadOnlyAccess</strong></td>
-<td>Read-only access to S3 (GetObject, ListBucket, ListAllMyBuckets, GetBucketLocation, GetBucketEncryption)</td>
+<td>Read-only access to S3: every <code>Get*</code> and <code>List*</code> S3 action (objects and their versions, tags, attributes, retention and legal hold, bucket listings and configurations) plus <code>arca:GetBucketCompression</code></td>
 </tr>
 </tbody>
 </table>
 <p>Built-in grants cannot be modified or deleted.</p>
+<p>Every S3 operation maps to its AWS action: a bucket configuration has its own pair (<code>s3:GetLifecycleConfiguration</code> / <code>s3:PutLifecycleConfiguration</code>, <code>s3:GetBucketVersioning</code> / <code>s3:PutBucketVersioning</code>, ...), object tags, retention and legal hold have theirs, and a request naming a <code>versionId</code> needs the <code>*Version*</code> variant (<code>s3:GetObjectVersion</code>, <code>s3:DeleteObjectVersion</code>). <code>s3:CreateBucket</code> only creates buckets, <code>s3:ListBucket</code> only lists objects and <code>s3:GetObject</code> only reads object content. The full list is in the <a href="../../reference/admin-api/#policy-document-format">Admin API reference</a>.</p>
 <h2 id="authentication-flow">Authentication Flow<a class="headerlink" href="#authentication-flow" title="Permanent link">&para;</a></h2>
 <p>Every S3 and Admin API request goes through this authentication flow:</p>
 <pre class="mermaid"><code>flowchart TD
@@ -1819,7 +1820,7 @@
 <p>The root user bypasses policy evaluation entirely. All requests from the root user are allowed regardless of grant configuration.</p>
 </div>
 <h2 id="operations-that-touch-other-objects">Operations That Touch Other Objects<a class="headerlink" href="#operations-that-touch-other-objects" title="Permanent link">&para;</a></h2>
-<p>A request is authorized on the bucket and key it addresses: for a virtual-hosted request (<code>Host: bucket.&lt;domain&gt;</code>, with <code>[server] domain</code> set) that is the bucket in the host and the key in the path, exactly as the server executes it. Some operations also read or destroy objects named elsewhere in the request, and each of those objects is checked too:</p>
+<p>A request is authorized on the bucket and key it addresses, percent-decoded as the server decodes them (<code>privat%65/s</code> is checked as <code>private/s</code>): for a virtual-hosted request (<code>Host: bucket.&lt;domain&gt;</code>, with <code>[server] domain</code> set) that is the bucket in the host and the key in the path, exactly as the server executes it. Some operations also read or destroy objects named elsewhere in the request, and each of those objects is checked too:</p>
 <table>
 <thead>
 <tr>
@@ -1830,11 +1831,19 @@
 <tbody>
 <tr>
 <td>CopyObject, UploadPartCopy</td>
-<td><code>s3:GetObject</code> on the <code>x-amz-copy-source</code> object</td>
+<td><code>s3:GetObject</code> on the <code>x-amz-copy-source</code> object (<code>s3:GetObjectVersion</code> when it names a version)</td>
 </tr>
 <tr>
 <td>DeleteObjects</td>
-<td><code>s3:DeleteObject</code> on every key in the body, instead of a single check on the bucket: the keys the caller may not delete come back as <code>AccessDenied</code> entries of the <code>DeleteResult</code>, and a request in which no key is deletable is refused with <code>403</code></td>
+<td><code>s3:DeleteObject</code> on every key in the body (<code>s3:DeleteObjectVersion</code> for an entry with a <code>VersionId</code>), instead of a single check on the bucket: the keys the caller may not delete come back as <code>AccessDenied</code> entries of the <code>DeleteResult</code>, and a request in which no key is deletable is refused with <code>403</code></td>
+</tr>
+<tr>
+<td><code>x-amz-tagging</code> on PutObject or CreateMultipartUpload, CopyObject with <code>x-amz-tagging-directive: REPLACE</code></td>
+<td><code>s3:PutObjectTagging</code> on the object</td>
+</tr>
+<tr>
+<td>Object-lock headers on PutObject (<code>x-amz-object-lock-mode</code>, <code>-retain-until-date</code>, legal hold)</td>
+<td><code>s3:PutObjectRetention</code> / <code>s3:PutObjectLegalHold</code> on the object</td>
 </tr>
 <tr>
 <td><code>x-amz-bypass-governance-retention: true</code> (DeleteObject of a version, PutObjectRetention)</td>

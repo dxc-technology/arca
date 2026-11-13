@@ -591,6 +591,34 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE multipart_uploads ADD COLUMN checksum_type TEXT;
         ",
     },
+    Migration {
+        version: 29,
+        description: "Granular S3 actions: rename the bucket-encryption actions, widen S3ReadOnlyAccess",
+        // Bucket subresources and object tagging, versions, retention, ... now
+        // have their own AWS actions instead of riding on ListBucket /
+        // CreateBucket / GetObject. Two consequences for stored grants:
+        //
+        // - Arca's own s3:Get/Put/DeleteBucketEncryption become AWS's
+        //   s3:GetEncryptionConfiguration / s3:PutEncryptionConfiguration
+        //   (deleting needs the Put action). Renamed in every grant, so a grant
+        //   keeps doing what it did and still validates.
+        // - The built-in S3ReadOnlyAccess (not editable by users) gains the
+        //   read actions of everything it could read before.
+        //
+        // updated_at is left alone: every node of a cluster runs the same
+        // rewrite, so the copies stay identical.
+        sql: "
+            UPDATE grants SET document =
+                REPLACE(REPLACE(REPLACE(document,
+                    '\"s3:GetBucketEncryption\"', '\"s3:GetEncryptionConfiguration\"'),
+                    '\"s3:PutBucketEncryption\"', '\"s3:PutEncryptionConfiguration\"'),
+                    '\"s3:DeleteBucketEncryption\"', '\"s3:PutEncryptionConfiguration\"')
+            WHERE document LIKE '%BucketEncryption\"%';
+
+            UPDATE grants SET document = '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:ListAllMyBuckets\",\"s3:ListBucket\",\"s3:ListBucketVersions\",\"s3:ListBucketMultipartUploads\",\"s3:GetBucketLocation\",\"s3:GetEncryptionConfiguration\",\"s3:GetBucketVersioning\",\"s3:GetLifecycleConfiguration\",\"s3:GetBucketTagging\",\"s3:GetReplicationConfiguration\",\"s3:GetBucketNotification\",\"s3:GetBucketObjectLockConfiguration\",\"arca:GetBucketCompression\",\"s3:GetObject\",\"s3:GetObjectVersion\",\"s3:GetObjectAttributes\",\"s3:GetObjectVersionAttributes\",\"s3:GetObjectTagging\",\"s3:GetObjectVersionTagging\",\"s3:GetObjectRetention\",\"s3:GetObjectLegalHold\",\"s3:ListMultipartUploadParts\"],\"Resource\":[\"*\"]}]}'
+            WHERE grant_id = 'grant-s3-read-only';
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -664,7 +692,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 28);
+        assert_eq!(version, 29);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -714,12 +742,53 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 28);
+        assert_eq!(version, 29);
 
-        // Twenty-six migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 28);
+        assert_eq!(count, 29);
+    }
+    fn grant_actions(conn: &Connection, grant_id: &str) -> Vec<String> {
+        let doc: String = conn
+            .query_row("SELECT document FROM grants WHERE grant_id = ?1", [grant_id], |r| r.get(0))
+            .unwrap();
+        let doc = arca_core::policy::parse_policy_document(&doc).unwrap();
+        doc.statement.into_iter().flat_map(|s| s.action).collect()
+    }
+
+    /// S3ReadOnlyAccess must keep reading what it read when ListBucket and
+    /// GetObject covered every subresource, and validate as a grant.
+    #[test]
+    fn read_only_grant_has_every_read_action() {
+        let conn = open_memory_db();
+        run_migrations(&conn).unwrap();
+        let actions = grant_actions(&conn, "grant-s3-read-only");
+        assert_eq!(actions, arca_core::policy::actions::S3_READ_ONLY);
+        assert!(actions.iter().all(|a| arca_core::policy::actions::is_valid_action(a)));
+    }
+
+    /// A grant written before v29 keeps its bucket-encryption permissions
+    /// under the AWS names.
+    #[test]
+    fn old_encryption_actions_are_renamed() {
+        let conn = open_memory_db();
+        run_migrations(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
+             VALUES ('g-old', 'old', '', ?1, 'now', 'now')",
+            [r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketEncryption","s3:PutBucketEncryption","s3:DeleteBucketEncryption","s3:GetObject"],"Resource":["*"]}]}"#],
+        )
+        .unwrap();
+        conn.execute_batch(MIGRATIONS.last().unwrap().sql).unwrap();
+        assert_eq!(
+            grant_actions(&conn, "g-old"),
+            [
+                "s3:GetEncryptionConfiguration",
+                "s3:PutEncryptionConfiguration",
+                "s3:PutEncryptionConfiguration",
+                "s3:GetObject"
+            ]
+        );
     }
 }

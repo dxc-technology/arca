@@ -24,14 +24,14 @@ ROOT = Credentials(
 )
 
 
-def signed_request(method, url, creds, data=None, keep_url=False):
+def signed_request(method, url, creds, data=None, keep_url=False, headers=None):
     """Sends a SigV4-signed request; a dict body is sent as JSON.
 
     `keep_url` sends the URL exactly as signed: by default `requests` decodes
     escapes of unreserved characters (`%65` becomes `e`), which breaks the
     signature of a deliberately encoded path.
     """
-    headers = {}
+    headers = dict(headers or {})
     if data is not None:
         headers["Content-Type"] = "application/json"
         data = json.dumps(data) if isinstance(data, dict) else data

@@ -1072,21 +1072,45 @@ Grants contain an IAM-compatible policy document with this structure:
 
 **Supported actions**:
 
+Action names follow AWS, and so does the rule that removing a configuration needs the action that writes it. A query string naming a subresource Arca does not implement (`?cors`, `?acl`, ...) is answered `501 Not Implemented`.
+
 | Action | Description |
 |--------|-------------|
 | `*` | All actions (full wildcard) |
 | `s3:*` | All S3 actions |
-| `s3:CreateBucket` | Create bucket |
-| `s3:DeleteBucket` | Delete bucket |
-| `s3:ListBucket` | List objects in a bucket |
-| `s3:ListAllMyBuckets` | List all buckets |
-| `s3:GetBucketLocation` | Get bucket location |
-| `s3:GetBucketEncryption` | Get bucket encryption configuration |
-| `s3:PutBucketEncryption` | Set bucket encryption configuration |
-| `s3:DeleteBucketEncryption` | Delete bucket encryption configuration |
-| `s3:GetObject` | Get (download) an object |
-| `s3:PutObject` | Put (upload) an object |
-| `s3:DeleteObject` | Delete an object (checked per key in DeleteObjects) |
+| `s3:CreateBucket` | CreateBucket |
+| `s3:DeleteBucket` | DeleteBucket |
+| `s3:ListAllMyBuckets` | ListBuckets |
+| `s3:ListBucket` | ListObjects, ListObjectsV2, HeadBucket |
+| `s3:ListBucketVersions` | ListObjectVersions |
+| `s3:ListBucketMultipartUploads` | ListMultipartUploads |
+| `s3:GetBucketLocation` | GetBucketLocation |
+| `s3:GetEncryptionConfiguration` | GetBucketEncryption |
+| `s3:PutEncryptionConfiguration` | PutBucketEncryption, DeleteBucketEncryption |
+| `s3:GetBucketVersioning` / `s3:PutBucketVersioning` | GetBucketVersioning / PutBucketVersioning |
+| `s3:GetLifecycleConfiguration` | GetBucketLifecycleConfiguration |
+| `s3:PutLifecycleConfiguration` | PutBucketLifecycleConfiguration, DeleteBucketLifecycle |
+| `s3:GetBucketTagging` | GetBucketTagging |
+| `s3:PutBucketTagging` | PutBucketTagging, DeleteBucketTagging |
+| `s3:GetReplicationConfiguration` | GetBucketReplication |
+| `s3:PutReplicationConfiguration` | PutBucketReplication, DeleteBucketReplication |
+| `s3:GetBucketNotification` / `s3:PutBucketNotification` | GetBucketNotificationConfiguration / PutBucketNotificationConfiguration |
+| `s3:GetBucketObjectLockConfiguration` / `s3:PutBucketObjectLockConfiguration` | GetObjectLockConfiguration / PutObjectLockConfiguration |
+| `arca:GetBucketCompression` | `GET /{bucket}?compression` (Arca extension) |
+| `arca:PutBucketCompression` | `PUT` and `DELETE /{bucket}?compression` |
+| `s3:GetObject` | GetObject, HeadObject (also the source of CopyObject and UploadPartCopy) |
+| `s3:GetObjectVersion` | GetObject, HeadObject with `versionId` (and a copy source naming a version) |
+| `s3:PutObject` | PutObject, CopyObject, CreateMultipartUpload, UploadPart, UploadPartCopy, CompleteMultipartUpload |
+| `s3:DeleteObject` | DeleteObject (checked per key in DeleteObjects) |
+| `s3:DeleteObjectVersion` | DeleteObject with `versionId` (and DeleteObjects entries naming a version) |
+| `s3:GetObjectAttributes` / `s3:GetObjectVersionAttributes` | GetObjectAttributes, without / with `versionId` |
+| `s3:GetObjectTagging` / `s3:GetObjectVersionTagging` | GetObjectTagging, without / with `versionId` |
+| `s3:PutObjectTagging` / `s3:PutObjectVersionTagging` | PutObjectTagging, without / with `versionId`; `s3:PutObjectTagging` is also needed for `x-amz-tagging` on PutObject and CreateMultipartUpload, and on CopyObject with `x-amz-tagging-directive: REPLACE` |
+| `s3:DeleteObjectTagging` / `s3:DeleteObjectVersionTagging` | DeleteObjectTagging, without / with `versionId` |
+| `s3:ListMultipartUploadParts` | ListParts |
+| `s3:AbortMultipartUpload` | AbortMultipartUpload |
+| `s3:GetObjectRetention` / `s3:PutObjectRetention` | GetObjectRetention / PutObjectRetention; `s3:PutObjectRetention` is also needed for `x-amz-object-lock-mode` / `-retain-until-date` on PutObject |
+| `s3:GetObjectLegalHold` / `s3:PutObjectLegalHold` | GetObjectLegalHold / PutObjectLegalHold; `s3:PutObjectLegalHold` is also needed for a legal-hold header on PutObject |
 | `s3:BypassGovernanceRetention` | Honour `x-amz-bypass-governance-retention: true` on GOVERNANCE-retained objects |
 | `arca:*` | All Arca admin actions |
 | `arca:ViewServerInfo` | View server info and stats |

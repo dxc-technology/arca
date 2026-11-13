@@ -22,6 +22,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from rbac_helpers import (
+    ROOT,
     allow,
     own_bucket_statements,
     restricted_user,
@@ -75,6 +76,15 @@ def victim(s3_client, make_bucket):
 @pytest.fixture
 def own(make_bucket):
     return make_bucket("own")
+
+
+def _assert_allowed(call):
+    """The call passes authorization, whatever the operation answers next
+    (GetBucketEncryption is 404 on a server without encryption)."""
+    try:
+        call()
+    except ClientError as exc:
+        assert exc.response["Error"]["Code"] != "AccessDenied", exc
 
 
 def _assert_access_denied(call):
@@ -272,7 +282,17 @@ class TestGovernanceBypassAuthorization:
         return bucket, vid
 
     def _statements(self, bucket, extra=()):
-        actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket", *extra]
+        """Everything these operations need except the bypass itself."""
+        actions = [
+            "s3:GetObject",
+            "s3:GetObjectVersion",
+            "s3:PutObject",
+            "s3:PutObjectRetention",
+            "s3:DeleteObject",
+            "s3:DeleteObjectVersion",
+            "s3:ListBucket",
+            *extra,
+        ]
         return [allow(actions, [f"arn:aws:s3:::{bucket}", f"arn:aws:s3:::{bucket}/*"])]
 
     def test_bypass_without_the_permission_cannot_delete(
@@ -371,3 +391,370 @@ class TestPercentEncodedPaths:
             resp = self._get(endpoint_url, creds, f"/{guarded}/a%20b.txt")
             assert resp.status_code == 200, resp.text
             assert resp.content == b"spaced"
+
+
+def _raw(endpoint_url, creds, method, raw_path, data=None):
+    return signed_request(method, f"{endpoint_url}{raw_path}", creds, data=data, keep_url=True)
+
+
+class TestSubresourceClassification:
+    """What the auth middleware authorizes is what the handler runs.
+
+    Both read the query through one classifier with exact key matching, so a
+    key that merely contains a subresource name (`?xencryption`) is not that
+    subresource, and a query naming two of them is the same operation on both
+    sides.
+    """
+
+    def test_xencryption_cannot_list(self, endpoint_url, victim):
+        statements = [allow(["s3:GetEncryptionConfiguration"], ["*"])]
+        with restricted_user(endpoint_url, statements) as creds:
+            resp = _raw(endpoint_url, creds, "GET", f"/{victim}?xencryption")
+            assert resp.status_code == 403, resp.text
+            assert b"secret.txt" not in resp.content
+
+    def test_xencryption_cannot_create_a_bucket(self, endpoint_url, s3_client):
+        name = f"sneaky-{uuid.uuid4().hex[:8]}"
+        statements = [allow(["s3:PutEncryptionConfiguration"], ["*"])]
+        with restricted_user(endpoint_url, statements) as creds:
+            resp = _raw(endpoint_url, creds, "PUT", f"/{name}?xencryption")
+            assert resp.status_code == 403, resp.text
+        with pytest.raises(ClientError):
+            s3_client.head_bucket(Bucket=name)
+
+    def test_xencryption_cannot_delete_a_bucket(self, endpoint_url, s3_client, make_bucket):
+        empty = make_bucket("empty")
+        statements = [allow(["s3:PutEncryptionConfiguration"], ["*"])]
+        with restricted_user(endpoint_url, statements) as creds:
+            resp = _raw(endpoint_url, creds, "DELETE", f"/{empty}?xencryption")
+            assert resp.status_code == 403, resp.text
+        s3_client.head_bucket(Bucket=empty)
+
+    def test_a_second_subresource_does_not_reach_lifecycle(
+        self, endpoint_url, s3_client, victim
+    ):
+        lifecycle = (
+            '<LifecycleConfiguration><Rule><ID>wipe</ID><Filter><Prefix></Prefix></Filter>'
+            "<Status>Enabled</Status><Expiration><Days>1</Days></Expiration></Rule>"
+            "</LifecycleConfiguration>"
+        )
+        statements = [allow(["s3:PutEncryptionConfiguration"], ["*"])]
+        with restricted_user(endpoint_url, statements) as creds:
+            resp = _raw(
+                endpoint_url, creds, "PUT", f"/{victim}?lifecycle&encryption", data=lifecycle
+            )
+            assert resp.status_code != 200, resp.text
+        with pytest.raises(ClientError) as exc:
+            s3_client.get_bucket_lifecycle_configuration(Bucket=victim)
+        assert exc.value.response["Error"]["Code"] == "NoSuchLifecycleConfiguration"
+
+    def test_an_unimplemented_subresource_does_not_delete_the_bucket(
+        self, endpoint_url, s3_client, make_bucket
+    ):
+        empty = make_bucket("cors")
+        resp = signed_request("DELETE", f"{endpoint_url}/{empty}?cors", ROOT, keep_url=True)
+        assert resp.status_code == 501, resp.text
+        s3_client.head_bucket(Bucket=empty)
+
+
+class TestGranularBucketActions:
+    """A bucket subresource needs its own AWS action, not CreateBucket / ListBucket."""
+
+    def test_create_bucket_cannot_reconfigure_another_bucket(self, endpoint_url, victim):
+        with restricted_user(endpoint_url, [allow(["s3:CreateBucket"], ["*"])]) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            _assert_access_denied(
+                lambda: user.put_bucket_versioning(
+                    Bucket=victim, VersioningConfiguration={"Status": "Enabled"}
+                )
+            )
+            _assert_access_denied(
+                lambda: user.put_bucket_lifecycle_configuration(
+                    Bucket=victim,
+                    LifecycleConfiguration={
+                        "Rules": [
+                            {
+                                "ID": "wipe",
+                                "Filter": {"Prefix": ""},
+                                "Status": "Enabled",
+                                "Expiration": {"Days": 1},
+                            }
+                        ]
+                    },
+                )
+            )
+            _assert_access_denied(
+                lambda: user.put_object_lock_configuration(
+                    Bucket=victim, ObjectLockConfiguration={"ObjectLockEnabled": "Enabled"}
+                )
+            )
+            _assert_access_denied(
+                lambda: user.put_bucket_tagging(
+                    Bucket=victim, Tagging={"TagSet": [{"Key": "k", "Value": "v"}]}
+                )
+            )
+            _assert_access_denied(lambda: user.delete_bucket_lifecycle(Bucket=victim))
+
+    def test_list_bucket_cannot_read_configurations(self, endpoint_url, victim):
+        with restricted_user(endpoint_url, [allow(["s3:ListBucket"], ["*"])]) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            assert user.list_objects_v2(Bucket=victim)["KeyCount"] == 1
+            _assert_access_denied(lambda: user.get_bucket_versioning(Bucket=victim))
+            _assert_access_denied(lambda: user.get_bucket_tagging(Bucket=victim))
+            _assert_access_denied(lambda: user.list_object_versions(Bucket=victim))
+            _assert_access_denied(lambda: user.list_multipart_uploads(Bucket=victim))
+
+    def test_each_action_allows_its_operation(self, endpoint_url, victim):
+        statements = [
+            allow(
+                [
+                    "s3:GetBucketVersioning",
+                    "s3:PutBucketTagging",
+                    "s3:GetBucketTagging",
+                    "s3:ListBucketVersions",
+                    "s3:ListBucketMultipartUploads",
+                    "s3:GetEncryptionConfiguration",
+                ],
+                [f"arn:aws:s3:::{victim}"],
+            )
+        ]
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            user.get_bucket_versioning(Bucket=victim)
+            user.put_bucket_tagging(Bucket=victim, Tagging={"TagSet": [{"Key": "k", "Value": "v"}]})
+            assert user.get_bucket_tagging(Bucket=victim)["TagSet"] == [{"Key": "k", "Value": "v"}]
+            user.delete_bucket_tagging(Bucket=victim)
+            user.list_object_versions(Bucket=victim)
+            user.list_multipart_uploads(Bucket=victim)
+            _assert_allowed(lambda: user.get_bucket_encryption(Bucket=victim))
+            _assert_access_denied(lambda: user.list_objects_v2(Bucket=victim))
+
+    def test_the_built_in_read_only_grant_reads_but_does_not_write(
+        self, endpoint_url, s3_client, victim
+    ):
+        """S3ReadOnlyAccess, as the server stores it after its migration."""
+        resp = signed_request("GET", f"{endpoint_url}/admin/grants/grant-s3-read-only", ROOT)
+        assert resp.status_code == 200, resp.text
+        statements = resp.json()["document"]["Statement"]
+        s3_client.put_object_tagging(
+            Bucket=victim, Key="secret.txt", Tagging={"TagSet": [{"Key": "a", "Value": "b"}]}
+        )
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            user.list_buckets()
+            user.list_objects_v2(Bucket=victim)
+            user.list_object_versions(Bucket=victim)
+            user.list_multipart_uploads(Bucket=victim)
+            user.get_bucket_versioning(Bucket=victim)
+            user.get_bucket_location(Bucket=victim)
+            _assert_allowed(lambda: user.get_bucket_encryption(Bucket=victim))
+            assert user.get_object(Bucket=victim, Key="secret.txt")["Body"].read() == b"top secret"
+            assert user.get_object_tagging(Bucket=victim, Key="secret.txt")["TagSet"]
+            _assert_access_denied(
+                lambda: user.put_object(Bucket=victim, Key="w", Body=b"w")
+            )
+            _assert_access_denied(
+                lambda: user.put_bucket_versioning(
+                    Bucket=victim, VersioningConfiguration={"Status": "Enabled"}
+                )
+            )
+            _assert_access_denied(lambda: user.delete_bucket_encryption(Bucket=victim))
+
+    def test_the_old_encryption_action_names_are_rejected(self, endpoint_url):
+        resp = signed_request(
+            "POST",
+            f"{endpoint_url}/admin/grants",
+            ROOT,
+            data={
+                "name": f"old-{uuid.uuid4().hex[:8]}",
+                "document": {
+                    "Version": "2012-10-17",
+                    "Statement": [allow(["s3:GetBucketEncryption"], ["*"])],
+                },
+            },
+        )
+        if resp.status_code == 201:
+            signed_request(
+                "DELETE", f"{endpoint_url}/admin/grants/{resp.json()['grant_id']}", ROOT
+            )
+        assert resp.status_code == 400, resp.text
+
+
+class TestGranularObjectActions:
+    """Object subresources, versions and write headers need their own actions."""
+
+    @pytest.fixture
+    def versioned(self, s3_client, make_bucket):
+        """(bucket, first version id, second version id) of key `k`."""
+        bucket = make_bucket("versioned", ObjectLockEnabledForBucket=True)
+        v1 = s3_client.put_object(Bucket=bucket, Key="k", Body=b"one")["VersionId"]
+        v2 = s3_client.put_object(Bucket=bucket, Key="k", Body=b"two")["VersionId"]
+        return bucket, v1, v2
+
+    def _object_statements(self, bucket, actions):
+        return [allow(actions, [f"arn:aws:s3:::{bucket}", f"arn:aws:s3:::{bucket}/*"])]
+
+    def test_put_object_alone_cannot_lock_or_tag(self, endpoint_url, s3_client, versioned):
+        bucket, _, _ = versioned
+        statements = self._object_statements(bucket, ["s3:PutObject", "s3:GetObject"])
+        until = datetime.now(timezone.utc) + timedelta(days=3650)
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            _assert_access_denied(
+                lambda: user.put_object_retention(
+                    Bucket=bucket,
+                    Key="k",
+                    Retention={"Mode": "COMPLIANCE", "RetainUntilDate": until},
+                )
+            )
+            _assert_access_denied(
+                lambda: user.put_object_legal_hold(
+                    Bucket=bucket, Key="k", LegalHold={"Status": "ON"}
+                )
+            )
+            _assert_access_denied(
+                lambda: user.put_object(
+                    Bucket=bucket,
+                    Key="locked",
+                    Body=b"x",
+                    ObjectLockMode="COMPLIANCE",
+                    ObjectLockRetainUntilDate=until,
+                )
+            )
+            _assert_access_denied(
+                lambda: user.put_object(
+                    Bucket=bucket, Key="held", Body=b"x", ObjectLockLegalHoldStatus="ON"
+                )
+            )
+            # The header PutObject actually honours.
+            resp = signed_request(
+                "PUT",
+                f"{endpoint_url}/{bucket}/held",
+                creds,
+                data="x",
+                headers={"x-amz-object-lock-legal-hold-status": "ON"},
+            )
+            assert resp.status_code == 403, resp.text
+            _assert_access_denied(
+                lambda: user.put_object(Bucket=bucket, Key="tagged", Body=b"x", Tagging="a=b")
+            )
+            _assert_access_denied(
+                lambda: user.create_multipart_upload(Bucket=bucket, Key="mp", Tagging="a=b")
+            )
+            _assert_access_denied(
+                lambda: user.put_object_tagging(
+                    Bucket=bucket, Key="k", Tagging={"TagSet": [{"Key": "a", "Value": "b"}]}
+                )
+            )
+            # The plain write still works.
+            user.put_object(Bucket=bucket, Key="plain", Body=b"x")
+        for key in ("locked", "held", "tagged"):
+            with pytest.raises(ClientError):
+                s3_client.head_object(Bucket=bucket, Key=key)
+
+    def test_get_object_cannot_read_tags_or_lock_state(self, endpoint_url, versioned):
+        bucket, _, _ = versioned
+        statements = self._object_statements(bucket, ["s3:GetObject"])
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            assert user.get_object(Bucket=bucket, Key="k")["Body"].read() == b"two"
+            _assert_access_denied(lambda: user.get_object_tagging(Bucket=bucket, Key="k"))
+            _assert_access_denied(lambda: user.get_object_retention(Bucket=bucket, Key="k"))
+            _assert_access_denied(lambda: user.get_object_legal_hold(Bucket=bucket, Key="k"))
+
+    def test_a_version_needs_the_version_actions(self, endpoint_url, s3_client, versioned):
+        bucket, v1, _ = versioned
+        statements = self._object_statements(
+            bucket, ["s3:GetObject", "s3:DeleteObject", "s3:PutObject"]
+        )
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            _assert_access_denied(lambda: user.get_object(Bucket=bucket, Key="k", VersionId=v1))
+            with pytest.raises(ClientError) as exc:
+                user.head_object(Bucket=bucket, Key="k", VersionId=v1)
+            assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 403
+            _assert_access_denied(
+                lambda: user.delete_object(Bucket=bucket, Key="k", VersionId=v1)
+            )
+            _assert_access_denied(
+                lambda: user.copy_object(
+                    Bucket=bucket,
+                    Key="copy",
+                    CopySource={"Bucket": bucket, "Key": "k", "VersionId": v1},
+                )
+            )
+            _assert_access_denied(
+                lambda: user.delete_objects(
+                    Bucket=bucket, Delete={"Objects": [{"Key": "k", "VersionId": v1}]}
+                )
+            )
+            # The latest version (a delete marker) is still deletable in a batch.
+            result = user.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": [{"Key": "k"}, {"Key": "k", "VersionId": v1}]},
+            )
+            assert [e["Code"] for e in result.get("Errors", [])] == ["AccessDenied"]
+            assert [d["Key"] for d in result.get("Deleted", [])] == ["k"]
+        s3_client.head_object(Bucket=bucket, Key="k", VersionId=v1)
+
+    def test_the_version_actions_allow_versions(self, endpoint_url, s3_client, versioned):
+        bucket, v1, _ = versioned
+        statements = self._object_statements(
+            bucket, ["s3:GetObjectVersion", "s3:DeleteObjectVersion", "s3:PutObject"]
+        )
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            assert user.get_object(Bucket=bucket, Key="k", VersionId=v1)["Body"].read() == b"one"
+            user.copy_object(
+                Bucket=bucket,
+                Key="copy",
+                CopySource={"Bucket": bucket, "Key": "k", "VersionId": v1},
+            )
+            user.delete_object(Bucket=bucket, Key="k", VersionId=v1)
+        with pytest.raises(ClientError):
+            s3_client.head_object(Bucket=bucket, Key="k", VersionId=v1)
+
+    def test_tagging_and_lock_actions_allow_their_operations(self, endpoint_url, versioned):
+        bucket, _, _ = versioned
+        statements = self._object_statements(
+            bucket,
+            [
+                "s3:PutObject",
+                "s3:PutObjectTagging",
+                "s3:GetObjectTagging",
+                "s3:DeleteObjectTagging",
+                "s3:PutObjectLegalHold",
+                "s3:GetObjectLegalHold",
+            ],
+        )
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            user.put_object(Bucket=bucket, Key="t", Body=b"x", Tagging="a=b")
+            assert user.get_object_tagging(Bucket=bucket, Key="t")["TagSet"] == [
+                {"Key": "a", "Value": "b"}
+            ]
+            user.delete_object_tagging(Bucket=bucket, Key="t")
+            user.put_object_legal_hold(Bucket=bucket, Key="t", LegalHold={"Status": "ON"})
+            assert user.get_object_legal_hold(Bucket=bucket, Key="t")["LegalHold"]["Status"] == "ON"
+            user.put_object_legal_hold(Bucket=bucket, Key="t", LegalHold={"Status": "OFF"})
+
+    def test_multipart_actions(self, endpoint_url, make_bucket):
+        bucket = make_bucket("mp")
+        statements = self._object_statements(bucket, ["s3:PutObject"])
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            uid = user.create_multipart_upload(Bucket=bucket, Key="mp")["UploadId"]
+            user.upload_part(Bucket=bucket, Key="mp", UploadId=uid, PartNumber=1, Body=b"x")
+            _assert_access_denied(
+                lambda: user.list_parts(Bucket=bucket, Key="mp", UploadId=uid)
+            )
+            _assert_access_denied(
+                lambda: user.abort_multipart_upload(Bucket=bucket, Key="mp", UploadId=uid)
+            )
+        statements = self._object_statements(
+            bucket, ["s3:ListMultipartUploadParts", "s3:AbortMultipartUpload"]
+        )
+        with restricted_user(endpoint_url, statements) as creds:
+            user = s3_client_for(endpoint_url, creds)
+            assert len(user.list_parts(Bucket=bucket, Key="mp", UploadId=uid)["Parts"]) == 1
+            user.abort_multipart_upload(Bucket=bucket, Key="mp", UploadId=uid)

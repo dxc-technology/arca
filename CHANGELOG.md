@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DeleteObjects checks `s3:DeleteObject` per key, as AWS does.** It was checked once, on the bucket ARN: a grant on `arn:aws:s3:::bucket` alone could delete every object, while a prefix grant such as `arn:aws:s3:::bucket/public/*` could delete nothing. Keys the caller may not delete come back as `AccessDenied` entries of the `DeleteResult`; a request with no deletable key is refused with `403` before the bucket is looked up. An empty request is now `MalformedXML`, as on AWS.
 - **`x-amz-bypass-governance-retention` needs `s3:BypassGovernanceRetention`.** The header was honoured for anyone allowed `s3:DeleteObject` (or `s3:PutObject` for PutObjectRetention), so GOVERNANCE retention protected nothing against them. Without the permission the header is now ignored. `s3:*` and `*` grants include it.
 - **A percent-encoded bucket or key no longer dodges a Deny statement.** Grants were evaluated on the raw request path while the handler acts on the decoded bucket and key, so with an Allow on everything and a Deny on `arn:aws:s3:::bucket/private/*`, `GET /bucket/privat%65/s` was allowed and served `private/s`; an encoded bucket name (`/fin%61nce/...`) escaped a Deny on the whole bucket the same way. The policy now sees the names the handler acts on. As a side effect, a key that needs encoding (a space, for instance) now matches a grant written with its plain name, which refused it before.
+- **What is authorized is what runs.** The auth middleware and the handlers read the query string in different ways (a substring test on one side, a prefix test on the other), so they could disagree on the operation. A user allowed only `GetBucketEncryption` could list any bucket with `GET /<bucket>?xencryption`, create one with `PUT` and delete an empty one with `DELETE`; `PUT /<bucket>?lifecycle&encryption` was authorized as encryption and executed as lifecycle. Both now use one classifier with exact query-key matching; the audit log names operations with it too.
+- **Bucket and object subresources need their own AWS actions.** Every bucket configuration PUT was checked as `s3:CreateBucket`, every bucket GET as `s3:ListBucket`, every DELETE as `s3:DeleteBucket`, and object tagging, retention and legal hold as `s3:GetObject` / `s3:PutObject` / `s3:DeleteObject`. A user allowed `s3:CreateBucket` on `*` could put a one-day expiration rule on any bucket, and a user allowed `s3:PutObject` could lock objects in COMPLIANCE mode for years. Each operation now needs its AWS action (full table in the Admin API reference), including the object-lock headers and `x-amz-tagging` on PutObject.
+
+### Changed
+
+- **Breaking: grants are evaluated with the AWS actions.** Grants that relied on the coarse mapping stop allowing the operations it covered, and must list the new actions:
+    - bucket configurations: `s3:Get/PutBucketVersioning`, `s3:Get/PutLifecycleConfiguration`, `s3:Get/PutBucketTagging`, `s3:Get/PutReplicationConfiguration`, `s3:Get/PutBucketNotification`, `s3:Get/PutBucketObjectLockConfiguration`, `arca:Get/PutBucketCompression` (deleting a configuration needs the Put action, as on AWS);
+    - listings: `s3:ListBucketVersions`, `s3:ListBucketMultipartUploads`, `s3:ListMultipartUploadParts`;
+    - objects: `s3:GetObjectVersion` and `s3:DeleteObjectVersion` for any request naming a `versionId` (and a copy source or DeleteObjects entry naming one), `s3:Get/Put/DeleteObjectTagging` and their `*Version*` variants, `s3:GetObjectAttributes` / `s3:GetObjectVersionAttributes`, `s3:Get/PutObjectRetention`, `s3:Get/PutObjectLegalHold`, `s3:AbortMultipartUpload`.
+
+    `s3:*` and `*` grants are unaffected.
+- **Bucket encryption uses the AWS action names.** `s3:GetBucketEncryption`, `s3:PutBucketEncryption` and `s3:DeleteBucketEncryption` become `s3:GetEncryptionConfiguration` and `s3:PutEncryptionConfiguration` (deleting needs the Put action). Stored grants are renamed by a schema migration, so they keep working; new grants using the old names are rejected.
+- **`S3ReadOnlyAccess` covers every read.** The built-in grant now lists every `Get*` / `List*` S3 action and `arca:GetBucketCompression`, so it keeps reading what it read before; the console's read-only template matches it.
+- **Do not run a cluster with nodes on both sides of this release**: older nodes evaluate the coarse actions and do not know the new names.
+
+### Fixed
+
+- **A subresource Arca does not implement is answered `501`** instead of falling through to the plain operation: `DELETE /<bucket>?cors` deleted the bucket when it was empty, `PUT /<bucket>/<key>?acl` overwrote the object with the ACL document and `GET ?acl` returned the object's content.
 
 ## [0.34.1] — 2026-10-30
 

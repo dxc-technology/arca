@@ -38,6 +38,12 @@ pub async fn create_multipart_upload(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
+    // Tags set at creation need `s3:PutObjectTagging`, as on PutObject.
+    if let Err(denied) =
+        super::object::authorize_write_headers(&request, &bucket, &key, &resource, true, false)
+    {
+        return denied;
+    }
 
     // TECHDEBT(TD-010): SSE-C is not yet supported for multipart uploads.
     if request.headers().contains_key(SSEC_ALGO_HEADER) {
@@ -133,6 +139,12 @@ pub async fn upload_part(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
+    // Tags set at creation need `s3:PutObjectTagging`, as on PutObject.
+    if let Err(denied) =
+        super::object::authorize_write_headers(&request, &bucket, &key, &resource, true, false)
+    {
+        return denied;
+    }
 
     // TECHDEBT(TD-010): SSE-C is not yet supported for multipart uploads.
     if request.headers().contains_key(SSEC_ALGO_HEADER) {

@@ -550,13 +550,14 @@ run_postgres() {
     # and the multipart checksum (guards the objects.parts column and the
     # multipart_uploads.checksum_type column in pg/metadata.rs) and the
     # tagging suite (guards the tag-count subquery of GET/HEAD in
-    # pg/metadata.rs)
+    # pg/metadata.rs) and the RBAC side-door suite (guards the grant rewrite
+    # of PostgreSQL migration 0019)
     $COMPOSE run --rm \
         -e ARCA_POSTGRES_BACKEND=1 \
         test integration/test_postgres.py integration/test_conditional_writes.py \
         integration/test_versioning.py integration/test_multipart_abort_race.py \
         integration/test_object_owner.py integration/test_multipart_checksums.py \
-        integration/test_tagging.py "$@"
+        integration/test_tagging.py integration/test_rbac_bypass.py "$@"
     local rc=$?
 
     # Step 6: the seq reconciliation runs when the store opens, so it needs a

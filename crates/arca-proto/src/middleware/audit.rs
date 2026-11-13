@@ -14,6 +14,7 @@ use axum::response::Response;
 
 use arca_core::store::audit::AuditEntry;
 
+use crate::s3_operation::{split_routed_path, BucketGet, Operation};
 use crate::state::AppState;
 
 /// Classify an S3/admin operation from the HTTP request.
@@ -62,140 +63,21 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
         };
     }
 
-    // S3 API — count path segments to determine scope
-    let trimmed = path.trim_start_matches('/');
-    let has_key = trimmed.contains('/');
-
-    if trimmed.is_empty() {
-        // Service level: GET / = ListBuckets
-        return "ListBuckets";
-    }
-
-    if has_key {
-        // Object-level: /{bucket}/{key...}
-        // Check query params for multipart operations
-        if query.contains("uploadId") && query.contains("partNumber") {
-            return match method {
-                "PUT" => "UploadPart",
-                _ => "Unknown",
-            };
-        }
-        if query.contains("uploadId") {
-            return match method {
-                "GET" => "ListParts",
-                "POST" => "CompleteMultipartUpload",
-                "DELETE" => "AbortMultipartUpload",
-                _ => "Unknown",
-            };
-        }
-        if query.contains("uploads") {
-            return "CreateMultipartUpload";
-        }
-        if query.contains("tagging") {
-            return match method {
-                "GET" => "GetObjectTagging",
-                "PUT" => "PutObjectTagging",
-                "DELETE" => "DeleteObjectTagging",
-                _ => "Unknown",
-            };
-        }
-        if query.contains("retention") {
-            return match method {
-                "GET" => "GetObjectRetention",
-                "PUT" => "PutObjectRetention",
-                _ => "Unknown",
-            };
-        }
-        if query.contains("legal-hold") {
-            return match method {
-                "GET" => "GetObjectLegalHold",
-                "PUT" => "PutObjectLegalHold",
-                _ => "Unknown",
-            };
-        }
-        if query.contains("attributes") {
-            return "GetObjectAttributes";
-        }
-        return match method {
-            "GET" => "GetObject",
-            "HEAD" => "HeadObject",
-            "PUT" => {
-                // Check for CopyObject (x-amz-copy-source)
-                "PutObject"
-            }
-            "DELETE" => "DeleteObject",
-            "POST" => "PostObject",
-            _ => "Unknown",
-        };
-    }
-
-    // Bucket-level: /{bucket}
-    if query.contains("location") {
-        return "GetBucketLocation";
-    }
-    if query.contains("uploads") {
-        return "ListMultipartUploads";
-    }
-    if query.contains("versioning") {
-        return match method {
-            "GET" => "GetBucketVersioning",
-            "PUT" => "PutBucketVersioning",
-            _ => "Unknown",
-        };
-    }
-    if query.contains("encryption") {
-        return match method {
-            "GET" => "GetBucketEncryption",
-            "PUT" => "PutBucketEncryption",
-            "DELETE" => "DeleteBucketEncryption",
-            _ => "Unknown",
-        };
-    }
-    if query.contains("tagging") {
-        return match method {
-            "GET" => "GetBucketTagging",
-            "PUT" => "PutBucketTagging",
-            "DELETE" => "DeleteBucketTagging",
-            _ => "Unknown",
-        };
-    }
-    if query.contains("lifecycle") {
-        return match method {
-            "GET" => "GetBucketLifecycleConfiguration",
-            "PUT" => "PutBucketLifecycleConfiguration",
-            "DELETE" => "DeleteBucketLifecycleConfiguration",
-            _ => "Unknown",
-        };
-    }
-    if query.contains("object-lock") {
-        return match method {
-            "GET" => "GetObjectLockConfiguration",
-            "PUT" => "PutObjectLockConfiguration",
-            _ => "Unknown",
-        };
-    }
-    if query.contains("notification") {
-        return match method {
-            "GET" => "GetBucketNotificationConfiguration",
-            "PUT" => "PutBucketNotificationConfiguration",
-            _ => "Unknown",
-        };
-    }
-    if query.contains("delete") {
-        return "DeleteObjects";
-    }
-    if query.contains("list-type") {
+    // S3 API: the classifier the auth middleware and the handlers use, so the
+    // log names the operation that ran.
+    let Some((bucket, key)) = split_routed_path(path) else {
+        return "Unknown";
+    };
+    let Ok(method) = http::Method::from_bytes(method.as_bytes()) else {
+        return "Unknown";
+    };
+    let operation = Operation::classify(&method, &bucket, key.as_deref(), query);
+    if operation == Operation::BucketGet(BucketGet::ListObjects)
+        && form_urlencoded::parse(query.as_bytes()).any(|(k, _)| k == "list-type")
+    {
         return "ListObjectsV2";
     }
-
-    match method {
-        "GET" => "ListObjectsV1",
-        "HEAD" => "HeadBucket",
-        "PUT" => "CreateBucket",
-        "DELETE" => "DeleteBucket",
-        "POST" => "PostBucket",
-        _ => "Unknown",
-    }
+    operation.name()
 }
 
 /// Extract bucket and key from an S3 path like "/{bucket}/{key...}".
@@ -416,6 +298,18 @@ mod tests {
         assert_eq!(classify_operation("PUT", "/bucket/key.txt", Some("legal-hold")), "PutObjectLegalHold");
         assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("uploadId=abc")), "ListParts");
         assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("attributes")), "GetObjectAttributes");
+        assert_eq!(classify_operation("GET", "/my-bucket", Some("versions")), "ListObjectVersions");
+        assert_eq!(classify_operation("PUT", "/my-bucket", Some("compression")), "PutBucketCompression");
+        assert_eq!(classify_operation("DELETE", "/my-bucket", Some("cors")), "NotImplemented");
+    }
+
+    /// The log names the operation that ran: a query key that only contains a
+    /// subresource name is not that subresource (the handler lists objects).
+    #[test]
+    fn classify_matches_query_keys_exactly() {
+        assert_eq!(classify_operation("GET", "/my-bucket", Some("xencryption")), "ListObjectsV1");
+        assert_eq!(classify_operation("PUT", "/my-bucket", Some("lifecycle&encryption")), "PutBucketEncryption");
+        assert_eq!(classify_operation("GET", "/b/k", Some("response-content-type=tagging")), "GetObject");
     }
 
     #[test]

@@ -1447,10 +1447,10 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-007</td>
 <td>Unimplemented ops</td>
-<td>~33 bucket-level GET/PUT operations return 501 NotImplemented (ACLs, CORS, policies, etc.)</td>
+<td>~33 bucket-level GET/PUT/DELETE operations and the object <code>acl</code>/<code>torrent</code>/<code>restore</code>/<code>select</code> subresources return 501 NotImplemented (ACLs, CORS, policies, etc.); the lists live in the request classifier</td>
 <td>Implement each feature as needed post-MVP</td>
 <td>All tests in skipped/unimplemented categories</td>
-<td><code>bucket.rs</code></td>
+<td><code>s3_operation.rs</code>, <code>bucket.rs</code>, <code>object.rs</code></td>
 </tr>
 <tr>
 <td>TD-010</td>

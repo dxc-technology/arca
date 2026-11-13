@@ -10,7 +10,7 @@ import { bucketDetailView } from './views/bucket-detail.js?v=deeplink-1';
 import { credentialsView } from './views/credentials.js';
 import { usersView, userDetailView } from './views/users.js?v=eff-grants-refresh-1';
 import { teamsView, teamDetailView } from './views/teams.js';
-import { grantsView, grantDetailView } from './views/grants.js';
+import { grantsView, grantDetailView } from './views/grants.js?v=granular-actions-1';
 import { settingsView } from './views/settings.js';
 import { auditView } from './views/audit.js?v=node-views-2';
 import { monitoringView } from './views/monitoring.js?v=node-views-2';

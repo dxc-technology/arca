@@ -14,6 +14,7 @@ use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
 use crate::handlers::admin_settings::effective_region;
 use crate::handlers::delimited::{list_delimited, past_prefix, DelimitedPage, ListFrom, Listed, LIST_BATCH};
+use crate::s3_operation::{BucketDelete, BucketGet, BucketPost, BucketPut};
 use crate::state::AppState;
 use crate::xml::error_response::{
     internal_error_response, not_implemented_response, s3_error_response,
@@ -75,9 +76,12 @@ pub async fn get_bucket(
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
     };
+    // The operation the auth middleware authorized: dispatch on it, never on
+    // a second reading of the query.
+    let operation = BucketGet::classify(query);
 
     // GetBucketLocation: s3-tests and clients call ?location during setup.
-    if params.iter().any(|(k, _)| k == "location") {
+    if operation == BucketGet::Location {
         // Check bucket exists first.
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {
@@ -97,7 +101,7 @@ pub async fn get_bucket(
     }
 
     // GetBucketEncryption
-    if params.iter().any(|(k, _)| k == "encryption") {
+    if operation == BucketGet::Encryption {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => {
@@ -146,7 +150,7 @@ pub async fn get_bucket(
     }
 
     // GetBucketCompression (Arca extension — parallels GetBucketEncryption)
-    if params.iter().any(|(k, _)| k == "compression") {
+    if operation == BucketGet::Compression {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -198,7 +202,7 @@ pub async fn get_bucket(
     }
 
     // GetBucketTagging
-    if params.iter().any(|(k, _)| k == "tagging") {
+    if operation == BucketGet::Tagging {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -221,7 +225,7 @@ pub async fn get_bucket(
     }
 
     // GetBucketLifecycleConfiguration
-    if params.iter().any(|(k, _)| k == "lifecycle") {
+    if operation == BucketGet::Lifecycle {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -258,7 +262,7 @@ pub async fn get_bucket(
     }
 
     // GetBucketReplication
-    if params.iter().any(|(k, _)| k == "replication") {
+    if operation == BucketGet::Replication {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -303,7 +307,7 @@ pub async fn get_bucket(
     }
 
     // GetObjectLockConfiguration
-    if params.iter().any(|(k, _)| k == "object-lock") {
+    if operation == BucketGet::ObjectLock {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -340,7 +344,7 @@ pub async fn get_bucket(
     }
 
     // GetBucketNotificationConfiguration
-    if params.iter().any(|(k, _)| k == "notification") {
+    if operation == BucketGet::Notification {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -382,21 +386,12 @@ pub async fn get_bucket(
     }
 
     // TECHDEBT(TD-007): Unimplemented GET bucket operations return 501.
-    let unimplemented_get_ops = [
-        "acl", "cors", "logging",
-        "policy", "replication", "website",
-        "ownershipControls", "publicAccessBlock", "policyStatus",
-        "accelerate", "requestPayment", "inventory", "analytics",
-        "metrics", "intelligenttiering",
-    ];
-    for op in &unimplemented_get_ops {
-        if params.iter().any(|(k, _)| k == *op) {
-            return not_implemented_response(&resource);
-        }
+    if operation == BucketGet::Unimplemented {
+        return not_implemented_response(&resource);
     }
 
     // GetBucketVersioning
-    if params.iter().any(|(k, _)| k == "versioning") {
+    if operation == BucketGet::Versioning {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => {
@@ -418,16 +413,17 @@ pub async fn get_bucket(
     }
 
     // ListMultipartUploads: GET /{bucket}?uploads
-    if params.iter().any(|(k, _)| k == "uploads") {
+    if operation == BucketGet::ListMultipartUploads {
         return list_multipart_uploads(state, &bucket, &resource, &params).await;
     }
 
     // ListObjectVersions
-    if params.iter().any(|(k, _)| k == "versions") {
+    if operation == BucketGet::ListObjectVersions {
         return list_object_versions(state, &bucket, &resource, &params).await;
     }
 
-    // Dispatch based on list-type parameter.
+    // ListObjects: the only operation left.
+    debug_assert_eq!(operation, BucketGet::ListObjects);
     match get_param("list-type") {
         Some("2") => list_objects_v2(state, &bucket, &resource, &params).await,
         Some(_) => not_implemented_response(&resource),
@@ -1398,25 +1394,25 @@ pub async fn create_bucket(
 ) -> Response {
     let resource = format!("/{bucket}");
     let owner = crate::middleware::identity::requester_username(request.extensions());
-    let query = request.uri().query().unwrap_or("");
+    let operation = BucketPut::classify(request.uri().query().unwrap_or(""));
 
     // PutBucketEncryption
-    if query.starts_with("encryption") || query.starts_with("encryption=") || query.starts_with("encryption&") {
+    if operation == BucketPut::Encryption {
         return put_bucket_encryption(state, &bucket, &resource, request).await;
     }
 
     // PutBucketCompression (Arca extension)
-    if query.starts_with("compression") || query.starts_with("compression=") || query.starts_with("compression&") {
+    if operation == BucketPut::Compression {
         return put_bucket_compression(state, &bucket, &resource, request).await;
     }
 
     // PutBucketVersioning
-    if query.starts_with("versioning") || query.starts_with("versioning=") || query.starts_with("versioning&") {
+    if operation == BucketPut::Versioning {
         return put_bucket_versioning(state, &bucket, &resource, request).await;
     }
 
     // PutBucketTagging
-    if query.starts_with("tagging") || query.starts_with("tagging=") || query.starts_with("tagging&") {
+    if operation == BucketPut::Tagging {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1443,7 +1439,7 @@ pub async fn create_bucket(
     }
 
     // PutBucketReplication
-    if query.starts_with("replication") || query.starts_with("replication=") || query.starts_with("replication&") {
+    if operation == BucketPut::Replication {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1498,7 +1494,7 @@ pub async fn create_bucket(
     }
 
     // PutBucketLifecycleConfiguration
-    if query.starts_with("lifecycle") || query.starts_with("lifecycle=") || query.starts_with("lifecycle&") {
+    if operation == BucketPut::Lifecycle {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1534,7 +1530,7 @@ pub async fn create_bucket(
     }
 
     // PutObjectLockConfiguration
-    if query.starts_with("object-lock") || query.starts_with("object-lock=") || query.starts_with("object-lock&") {
+    if operation == BucketPut::ObjectLock {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1597,7 +1593,7 @@ pub async fn create_bucket(
     }
 
     // PutBucketNotificationConfiguration
-    if query.starts_with("notification") || query.starts_with("notification=") || query.starts_with("notification&") {
+    if operation == BucketPut::Notification {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1641,19 +1637,11 @@ pub async fn create_bucket(
     }
 
     // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
-    let unimplemented_ops = [
-        "acl", "cors", "logging",
-        "policy", "replication",
-        "website", "accelerate",
-        "requestPayment", "inventory", "analytics", "metrics",
-        "ownershipControls", "publicAccessBlock", "intelligenttiering",
-    ];
-    for op in &unimplemented_ops {
-        if query.starts_with(op) || query.starts_with(&format!("{op}=")) || query.starts_with(&format!("{op}&")) {
-            return not_implemented_response(&resource);
-        }
+    if operation == BucketPut::Unimplemented {
+        return not_implemented_response(&resource);
     }
 
+    debug_assert_eq!(operation, BucketPut::CreateBucket);
     // Validate bucket name
     if let Err(e) = validate_bucket_name(&bucket) {
         return s3_error_response(e);
@@ -1705,10 +1693,10 @@ pub async fn delete_bucket(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}");
-    let query = request.uri().query().unwrap_or("");
+    let operation = BucketDelete::classify(request.uri().query().unwrap_or(""));
 
     // DeleteBucketTagging
-    if query.starts_with("tagging") || query.starts_with("tagging=") || query.starts_with("tagging&") {
+    if operation == BucketDelete::Tagging {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1726,7 +1714,7 @@ pub async fn delete_bucket(
     }
 
     // DeleteBucketCompression (Arca extension)
-    if query.starts_with("compression") || query.starts_with("compression=") || query.starts_with("compression&") {
+    if operation == BucketDelete::Compression {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1745,7 +1733,7 @@ pub async fn delete_bucket(
     }
 
     // DeleteBucketEncryption
-    if query.starts_with("encryption") || query.starts_with("encryption=") || query.starts_with("encryption&") {
+    if operation == BucketDelete::Encryption {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => {
@@ -1766,7 +1754,7 @@ pub async fn delete_bucket(
     }
 
     // DeleteBucketReplication
-    if query.starts_with("replication") || query.starts_with("replication=") || query.starts_with("replication&") {
+    if operation == BucketDelete::Replication {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1789,7 +1777,7 @@ pub async fn delete_bucket(
     }
 
     // DeleteBucketLifecycleConfiguration
-    if query.starts_with("lifecycle") || query.starts_with("lifecycle=") || query.starts_with("lifecycle&") {
+    if operation == BucketDelete::Lifecycle {
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {}
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
@@ -1805,6 +1793,13 @@ pub async fn delete_bucket(
             Err(e) => return internal_error_response(e, &resource),
         }
     }
+
+    // TECHDEBT(TD-007): a subresource Arca does not implement must not fall
+    // through to DeleteBucket (`DELETE ?cors` would delete an empty bucket).
+    if operation == BucketDelete::Unimplemented {
+        return not_implemented_response(&resource);
+    }
+    debug_assert_eq!(operation, BucketDelete::DeleteBucket);
 
     // Check bucket exists.
     match state.metadata.head_bucket(&bucket).await {
@@ -1838,30 +1833,15 @@ pub async fn delete_bucket(
 }
 
 /// POST /{bucket} — DeleteObjects (dispatched when `?delete` is present).
-/// Whether a bucket-level POST query is DeleteObjects: `?delete` or `?delete=`
-/// (mc sends the latter). Shared with the auth middleware, which leaves this
-/// operation to the per-key checks of [`delete_objects`].
-pub(crate) fn is_delete_objects_query(query: &str) -> bool {
-    query == "delete"
-        || query == "delete="
-        || query.starts_with("delete&")
-        || query.starts_with("delete=&")
-        || query.contains("&delete")
-        || query.contains("&delete=")
-}
-
 pub async fn post_bucket(
     State(state): State<AppState>,
     Path(bucket): Path<String>,
     request: axum::extract::Request,
 ) -> Response {
-    let query = request.uri().query().unwrap_or("");
-
-    if !is_delete_objects_query(query) {
-        return not_implemented_response(&format!("/{bucket}"));
+    match BucketPost::classify(request.uri().query().unwrap_or("")) {
+        BucketPost::DeleteObjects => delete_objects(state, bucket, request).await,
+        BucketPost::Unimplemented => not_implemented_response(&format!("/{bucket}")),
     }
-
-    delete_objects(state, bucket, request).await
 }
 
 /// Builds the per-key `DeletePrecondition` for a `DeleteObjects` batch entry.
@@ -1953,15 +1933,19 @@ async fn delete_objects(
     }
 
     // The auth middleware leaves this operation to us: `s3:DeleteObject` is
-    // checked per key, as AWS does. A caller who may delete none of the keys
-    // is refused outright, before learning whether the bucket exists.
+    // checked per key, as AWS does (`s3:DeleteObjectVersion` for an entry
+    // naming a version). A caller who may delete none of the keys is refused
+    // outright, before learning whether the bucket exists.
     let deletable: Vec<bool> = delete_body
         .objects
         .iter()
         .map(|obj| {
+            use arca_core::policy::actions::{S3_DELETE_OBJECT, S3_DELETE_OBJECT_VERSION};
+            let action =
+                if obj.version_id.is_some() { S3_DELETE_OBJECT_VERSION } else { S3_DELETE_OBJECT };
             crate::authorize::is_authorized(
                 &parts.extensions,
-                arca_core::policy::actions::S3_DELETE_OBJECT,
+                action,
                 &crate::authorize::object_arn(&bucket, &obj.key),
             )
         })

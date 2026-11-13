@@ -180,6 +180,7 @@ use arca_core::error::ArcaError;
 use super::multipart_checksum::ChecksumType;
 use super::object_parts::{self, PartSelection};
 use crate::middleware::identity::requester_username;
+use crate::s3_operation::{ObjectDelete, ObjectGet, ObjectPost, ObjectPut};
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
@@ -515,20 +516,30 @@ pub async fn put_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
-    // PutObjectTagging / PutObjectRetention / PutObjectLegalHold
+    // PutObjectTagging / PutObjectRetention / PutObjectLegalHold, dispatched
+    // on the operation the auth middleware authorized.
+    let operation = ObjectPut::classify(request.uri().query().unwrap_or(""));
     {
         let query_owned = request.uri().query().unwrap_or("").to_string();
-        if query_owned.contains("tagging") {
-            let resource = format!("/{bucket}/{key}");
-            return put_object_tagging(&state, &bucket, &key, &resource, &query_owned, request).await;
-        }
-        if query_owned.contains("retention") {
-            let resource = format!("/{bucket}/{key}");
-            return put_object_retention(&state, &bucket, &key, &resource, &query_owned, request).await;
-        }
-        if query_owned.contains("legal-hold") {
-            let resource = format!("/{bucket}/{key}");
-            return put_object_legal_hold(&state, &bucket, &key, &resource, &query_owned, request).await;
+        let resource = format!("/{bucket}/{key}");
+        match operation {
+            ObjectPut::Tagging { .. } => {
+                return put_object_tagging(&state, &bucket, &key, &resource, &query_owned, request)
+                    .await;
+            }
+            ObjectPut::Retention => {
+                return put_object_retention(&state, &bucket, &key, &resource, &query_owned, request)
+                    .await;
+            }
+            ObjectPut::LegalHold => {
+                return put_object_legal_hold(&state, &bucket, &key, &resource, &query_owned, request)
+                    .await;
+            }
+            // TECHDEBT(TD-007): `PUT ?acl` must not overwrite the object.
+            ObjectPut::Unimplemented => {
+                return crate::xml::error_response::not_implemented_response(&resource);
+            }
+            ObjectPut::UploadPart | ObjectPut::PutObject => {}
         }
     }
 
@@ -548,8 +559,8 @@ pub async fn put_object(
         }
     }
 
-    // Check for UploadPart / UploadPartCopy FIRST (query params take priority).
-    if let Some(query) = request.uri().query() {
+    // UploadPart / UploadPartCopy: both partNumber and uploadId present.
+    if let (ObjectPut::UploadPart, Some(query)) = (operation, request.uri().query()) {
         let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
@@ -585,6 +596,9 @@ pub async fn put_object(
     }
 
     let resource = format!("/{bucket}/{key}");
+    if let Err(denied) = authorize_write_headers(&request, &bucket, &key, &resource, true, true) {
+        return denied;
+    }
 
     // Check bucket exists.
     match state.metadata.head_bucket(&bucket).await {
@@ -930,15 +944,67 @@ pub async fn put_object(
 /// The auth middleware authorized the destination from the request path; the
 /// source is named by `x-amz-copy-source`, so it is checked here, before
 /// anything reveals whether the source bucket or key exists (AWS requires
-/// `s3:GetObject` on the source of CopyObject and UploadPartCopy).
+/// `s3:GetObject` on the source of CopyObject and UploadPartCopy, and
+/// `s3:GetObjectVersion` when the source names a version).
 fn authorize_copy_source(
     extensions: &http::Extensions,
     src_bucket: &str,
     src_key: &str,
+    src_version_id: Option<&str>,
     resource: &str,
 ) -> Result<(), Response> {
+    use arca_core::policy::actions::{S3_GET_OBJECT, S3_GET_OBJECT_VERSION};
+    let action = if src_version_id.is_some() { S3_GET_OBJECT_VERSION } else { S3_GET_OBJECT };
     let source = crate::authorize::object_arn(src_bucket, src_key);
-    if crate::authorize::is_authorized(extensions, arca_core::policy::actions::S3_GET_OBJECT, &source) {
+    if crate::authorize::is_authorized(extensions, action, &source) {
+        Ok(())
+    } else {
+        Err(s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, resource)))
+    }
+}
+
+/// Refuses a write whose headers do more than `s3:PutObject` allows.
+///
+/// As on AWS, object-lock headers on PutObject need `s3:PutObjectRetention`
+/// (mode, retain-until date) or `s3:PutObjectLegalHold`, and tags set with
+/// `x-amz-tagging` need `s3:PutObjectTagging`: otherwise a caller who may only
+/// write could lock an object in COMPLIANCE mode for years, which nobody can
+/// then delete. `lock_headers` is false where Arca ignores them (copies and
+/// multipart uploads). Checked before anything is written.
+pub(crate) fn authorize_write_headers(
+    request: &axum::extract::Request,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    tags_set: bool,
+    lock_headers: bool,
+) -> Result<(), Response> {
+    use arca_core::policy::actions::{
+        S3_PUT_OBJECT_LEGAL_HOLD, S3_PUT_OBJECT_RETENTION, S3_PUT_OBJECT_TAGGING,
+    };
+    let headers = request.headers();
+    let mut needed = Vec::new();
+    if tags_set && headers.contains_key("x-amz-tagging") {
+        needed.push(S3_PUT_OBJECT_TAGGING);
+    }
+    if lock_headers {
+        if headers.contains_key("x-amz-object-lock-mode")
+            || headers.contains_key("x-amz-object-lock-retain-until-date")
+        {
+            needed.push(S3_PUT_OBJECT_RETENTION);
+        }
+        // The AWS request header, and the one PutObject reads today.
+        if headers.contains_key("x-amz-object-lock-legal-hold")
+            || headers.contains_key("x-amz-object-lock-legal-hold-status")
+        {
+            needed.push(S3_PUT_OBJECT_LEGAL_HOLD);
+        }
+    }
+    let object = crate::authorize::object_arn(bucket, key);
+    if needed
+        .iter()
+        .all(|action| crate::authorize::is_authorized(request.extensions(), action, &object))
+    {
         Ok(())
     } else {
         Err(s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, resource)))
@@ -975,7 +1041,24 @@ async fn copy_object(
             ));
         }
     };
-    if let Err(denied) = authorize_copy_source(request.extensions(), &src_bucket, &src_key, &resource) {
+    if let Err(denied) = authorize_copy_source(
+        request.extensions(),
+        &src_bucket,
+        &src_key,
+        src_version_id.as_deref(),
+        &resource,
+    ) {
+        return denied;
+    }
+    // Tags replaced on the copy need `s3:PutObjectTagging` on the destination.
+    let replaces_tags = request
+        .headers()
+        .get("x-amz-tagging-directive")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|d| d.eq_ignore_ascii_case("REPLACE"));
+    if let Err(denied) =
+        authorize_write_headers(&request, &dest_bucket, &dest_key, &resource, replaces_tags, false)
+    {
         return denied;
     }
 
@@ -1392,7 +1475,13 @@ async fn upload_part_copy(
             ));
         }
     };
-    if let Err(denied) = authorize_copy_source(request.extensions(), &src_bucket, &src_key, &resource) {
+    if let Err(denied) = authorize_copy_source(
+        request.extensions(),
+        &src_bucket,
+        &src_key,
+        src_version_id.as_deref(),
+        &resource,
+    ) {
         return denied;
     }
 
@@ -1628,29 +1717,36 @@ pub async fn get_object(
     let resource = format!("/{bucket}/{key}");
     let query_str = request.uri().query().unwrap_or("").to_string();
 
-    // GetObjectTagging / GetObjectRetention / GetObjectLegalHold
-    if query_str.contains("tagging") {
-        return get_object_tagging(&state, &bucket, &key, &resource, &query_str).await;
-    }
-    if query_str.contains("retention") {
-        return get_object_retention(&state, &bucket, &key, &resource, &query_str).await;
-    }
-    if query_str.contains("legal-hold") {
-        return get_object_legal_hold(&state, &bucket, &key, &resource, &query_str).await;
-    }
-    // ListParts: GET /{bucket}/{key}?uploadId=X
-    if query_str.contains("uploadId") {
-        return list_parts_handler(&state, &bucket, &key, &resource, &query_str).await;
-    }
-    // GetObjectAttributes: GET /{bucket}/{key}?attributes
-    if query_str.contains("attributes") {
-        let attrs_header = request
-            .headers()
-            .get("x-amz-object-attributes")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
-        return get_object_attributes(&state, &bucket, &key, &resource, &query_str, request.headers(), &attrs_header).await;
+    // Dispatch on the operation the auth middleware authorized.
+    match ObjectGet::classify(&query_str) {
+        ObjectGet::Tagging { .. } => {
+            return get_object_tagging(&state, &bucket, &key, &resource, &query_str).await;
+        }
+        ObjectGet::Retention => {
+            return get_object_retention(&state, &bucket, &key, &resource, &query_str).await;
+        }
+        ObjectGet::LegalHold => {
+            return get_object_legal_hold(&state, &bucket, &key, &resource, &query_str).await;
+        }
+        // ListParts: GET /{bucket}/{key}?uploadId=X
+        ObjectGet::ListParts => {
+            return list_parts_handler(&state, &bucket, &key, &resource, &query_str).await;
+        }
+        // GetObjectAttributes: GET /{bucket}/{key}?attributes
+        ObjectGet::Attributes { .. } => {
+            let attrs_header = request
+                .headers()
+                .get("x-amz-object-attributes")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+            return get_object_attributes(&state, &bucket, &key, &resource, &query_str, request.headers(), &attrs_header).await;
+        }
+        // TECHDEBT(TD-007): `GET ?acl` is not the object's content.
+        ObjectGet::Unimplemented => {
+            return crate::xml::error_response::not_implemented_response(&resource);
+        }
+        ObjectGet::GetObject { .. } => {}
     }
 
     // Parse ?versionId= from query params.
@@ -2163,28 +2259,27 @@ pub async fn delete_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
-    // DeleteObjectTagging
-    if let Some(query) = request.uri().query() {
-        if query.contains("tagging") {
-            let resource = format!("/{bucket}/{key}");
-            return delete_object_tagging(&state, &bucket, &key, &resource, query).await;
-        }
+    // Dispatch on the operation the auth middleware authorized.
+    let operation = ObjectDelete::classify(request.uri().query().unwrap_or(""));
+    if let ObjectDelete::Tagging { .. } = operation {
+        let resource = format!("/{bucket}/{key}");
+        let query = request.uri().query().unwrap_or("");
+        return delete_object_tagging(&state, &bucket, &key, &resource, query).await;
     }
 
-    // Check for AbortMultipartUpload or versionId (distinguished by query param).
+    // AbortMultipartUpload, or DeleteObject with an optional versionId.
     let mut version_id = None;
     if let Some(query) = request.uri().query() {
         let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        if let Some((_, uid)) = params.iter().find(|(k, _)| k == "uploadId") {
-            return super::multipart::abort_multipart_upload(
-                state,
-                bucket,
-                key,
-                uid.clone(),
-            )
-            .await;
+        if operation == ObjectDelete::AbortMultipartUpload {
+            let uid = params
+                .iter()
+                .find(|(k, _)| k == "uploadId")
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default();
+            return super::multipart::abort_multipart_upload(state, bucket, key, uid).await;
         }
         version_id = params
             .iter()
@@ -2365,36 +2460,23 @@ pub async fn post_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
-    if let Some(query) = request.uri().query() {
-        // ?uploads → CreateMultipartUpload
-        // Also handle ?uploads= (mc sends this form)
-        if query == "uploads"
-            || query == "uploads="
-            || query.starts_with("uploads&")
-            || query.starts_with("uploads=&")
-            || query.contains("&uploads")
-            || query.contains("&uploads=")
-        {
-            return super::multipart::create_multipart_upload(state, bucket, key, request).await;
+    let query = request.uri().query().unwrap_or("");
+    match ObjectPost::classify(query) {
+        // ?uploads, or ?uploads= as mc sends it
+        ObjectPost::CreateMultipartUpload => {
+            super::multipart::create_multipart_upload(state, bucket, key, request).await
         }
-
-        // ?uploadId=X → CompleteMultipartUpload
-        let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        if let Some((_, uid)) = params.iter().find(|(k, _)| k == "uploadId") {
-            return super::multipart::complete_multipart_upload(
-                state,
-                bucket,
-                key,
-                uid.clone(),
-                request,
-            )
-            .await;
+        ObjectPost::CompleteMultipartUpload => {
+            let uid = form_urlencoded::parse(query.as_bytes())
+                .find(|(k, _)| k == "uploadId")
+                .map(|(_, v)| v.into_owned())
+                .unwrap_or_default();
+            super::multipart::complete_multipart_upload(state, bucket, key, uid, request).await
+        }
+        ObjectPost::Unimplemented => {
+            crate::xml::error_response::not_implemented_response(&format!("/{bucket}/{key}"))
         }
     }
-
-    crate::xml::error_response::not_implemented_response(&format!("/{bucket}/{key}"))
 }
 
 /// Result of parsing the Range header.

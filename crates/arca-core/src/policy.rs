@@ -16,16 +16,44 @@ pub mod actions {
     pub const S3_CREATE_BUCKET: &str = "s3:CreateBucket";
     pub const S3_DELETE_BUCKET: &str = "s3:DeleteBucket";
     pub const S3_LIST_BUCKET: &str = "s3:ListBucket";
+    pub const S3_LIST_BUCKET_VERSIONS: &str = "s3:ListBucketVersions";
+    pub const S3_LIST_BUCKET_MULTIPART_UPLOADS: &str = "s3:ListBucketMultipartUploads";
     pub const S3_LIST_ALL_MY_BUCKETS: &str = "s3:ListAllMyBuckets";
     pub const S3_GET_BUCKET_LOCATION: &str = "s3:GetBucketLocation";
-    pub const S3_GET_BUCKET_ENCRYPTION: &str = "s3:GetBucketEncryption";
-    pub const S3_PUT_BUCKET_ENCRYPTION: &str = "s3:PutBucketEncryption";
-    pub const S3_DELETE_BUCKET_ENCRYPTION: &str = "s3:DeleteBucketEncryption";
 
-    // Object actions
+    // Bucket configuration actions. As on AWS, deleting a configuration
+    // needs the action that writes it (DeleteBucketLifecycle needs
+    // PutLifecycleConfiguration, and so on).
+    pub const S3_GET_ENCRYPTION_CONFIGURATION: &str = "s3:GetEncryptionConfiguration";
+    pub const S3_PUT_ENCRYPTION_CONFIGURATION: &str = "s3:PutEncryptionConfiguration";
+    pub const S3_GET_BUCKET_VERSIONING: &str = "s3:GetBucketVersioning";
+    pub const S3_PUT_BUCKET_VERSIONING: &str = "s3:PutBucketVersioning";
+    pub const S3_GET_LIFECYCLE_CONFIGURATION: &str = "s3:GetLifecycleConfiguration";
+    pub const S3_PUT_LIFECYCLE_CONFIGURATION: &str = "s3:PutLifecycleConfiguration";
+    pub const S3_GET_BUCKET_TAGGING: &str = "s3:GetBucketTagging";
+    pub const S3_PUT_BUCKET_TAGGING: &str = "s3:PutBucketTagging";
+    pub const S3_GET_REPLICATION_CONFIGURATION: &str = "s3:GetReplicationConfiguration";
+    pub const S3_PUT_REPLICATION_CONFIGURATION: &str = "s3:PutReplicationConfiguration";
+    pub const S3_GET_BUCKET_NOTIFICATION: &str = "s3:GetBucketNotification";
+    pub const S3_PUT_BUCKET_NOTIFICATION: &str = "s3:PutBucketNotification";
+
+    // Object actions. A request naming a `versionId` needs the `*Version*`
+    // variant, as on AWS.
     pub const S3_GET_OBJECT: &str = "s3:GetObject";
+    pub const S3_GET_OBJECT_VERSION: &str = "s3:GetObjectVersion";
     pub const S3_PUT_OBJECT: &str = "s3:PutObject";
     pub const S3_DELETE_OBJECT: &str = "s3:DeleteObject";
+    pub const S3_DELETE_OBJECT_VERSION: &str = "s3:DeleteObjectVersion";
+    pub const S3_GET_OBJECT_ATTRIBUTES: &str = "s3:GetObjectAttributes";
+    pub const S3_GET_OBJECT_VERSION_ATTRIBUTES: &str = "s3:GetObjectVersionAttributes";
+    pub const S3_GET_OBJECT_TAGGING: &str = "s3:GetObjectTagging";
+    pub const S3_GET_OBJECT_VERSION_TAGGING: &str = "s3:GetObjectVersionTagging";
+    pub const S3_PUT_OBJECT_TAGGING: &str = "s3:PutObjectTagging";
+    pub const S3_PUT_OBJECT_VERSION_TAGGING: &str = "s3:PutObjectVersionTagging";
+    pub const S3_DELETE_OBJECT_TAGGING: &str = "s3:DeleteObjectTagging";
+    pub const S3_DELETE_OBJECT_VERSION_TAGGING: &str = "s3:DeleteObjectVersionTagging";
+    pub const S3_LIST_MULTIPART_UPLOAD_PARTS: &str = "s3:ListMultipartUploadParts";
+    pub const S3_ABORT_MULTIPART_UPLOAD: &str = "s3:AbortMultipartUpload";
 
     // Object Lock actions
     pub const S3_GET_BUCKET_OBJECT_LOCK_CONFIGURATION: &str = "s3:GetBucketObjectLockConfiguration";
@@ -35,6 +63,10 @@ pub mod actions {
     pub const S3_GET_OBJECT_LEGAL_HOLD: &str = "s3:GetObjectLegalHold";
     pub const S3_PUT_OBJECT_LEGAL_HOLD: &str = "s3:PutObjectLegalHold";
     pub const S3_BYPASS_GOVERNANCE_RETENTION: &str = "s3:BypassGovernanceRetention";
+
+    // Arca extensions of the S3 API. DELETE ?compression needs the Put action.
+    pub const ARCA_GET_BUCKET_COMPRESSION: &str = "arca:GetBucketCompression";
+    pub const ARCA_PUT_BUCKET_COMPRESSION: &str = "arca:PutBucketCompression";
 
     // Admin actions
     pub const ARCA_VIEW_SERVER_INFO: &str = "arca:ViewServerInfo";
@@ -50,14 +82,37 @@ pub mod actions {
         S3_CREATE_BUCKET,
         S3_DELETE_BUCKET,
         S3_LIST_BUCKET,
+        S3_LIST_BUCKET_VERSIONS,
+        S3_LIST_BUCKET_MULTIPART_UPLOADS,
         S3_LIST_ALL_MY_BUCKETS,
         S3_GET_BUCKET_LOCATION,
-        S3_GET_BUCKET_ENCRYPTION,
-        S3_PUT_BUCKET_ENCRYPTION,
-        S3_DELETE_BUCKET_ENCRYPTION,
+        S3_GET_ENCRYPTION_CONFIGURATION,
+        S3_PUT_ENCRYPTION_CONFIGURATION,
+        S3_GET_BUCKET_VERSIONING,
+        S3_PUT_BUCKET_VERSIONING,
+        S3_GET_LIFECYCLE_CONFIGURATION,
+        S3_PUT_LIFECYCLE_CONFIGURATION,
+        S3_GET_BUCKET_TAGGING,
+        S3_PUT_BUCKET_TAGGING,
+        S3_GET_REPLICATION_CONFIGURATION,
+        S3_PUT_REPLICATION_CONFIGURATION,
+        S3_GET_BUCKET_NOTIFICATION,
+        S3_PUT_BUCKET_NOTIFICATION,
         S3_GET_OBJECT,
+        S3_GET_OBJECT_VERSION,
         S3_PUT_OBJECT,
         S3_DELETE_OBJECT,
+        S3_DELETE_OBJECT_VERSION,
+        S3_GET_OBJECT_ATTRIBUTES,
+        S3_GET_OBJECT_VERSION_ATTRIBUTES,
+        S3_GET_OBJECT_TAGGING,
+        S3_GET_OBJECT_VERSION_TAGGING,
+        S3_PUT_OBJECT_TAGGING,
+        S3_PUT_OBJECT_VERSION_TAGGING,
+        S3_DELETE_OBJECT_TAGGING,
+        S3_DELETE_OBJECT_VERSION_TAGGING,
+        S3_LIST_MULTIPART_UPLOAD_PARTS,
+        S3_ABORT_MULTIPART_UPLOAD,
         S3_GET_BUCKET_OBJECT_LOCK_CONFIGURATION,
         S3_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION,
         S3_GET_OBJECT_RETENTION,
@@ -65,6 +120,8 @@ pub mod actions {
         S3_GET_OBJECT_LEGAL_HOLD,
         S3_PUT_OBJECT_LEGAL_HOLD,
         S3_BYPASS_GOVERNANCE_RETENTION,
+        ARCA_GET_BUCKET_COMPRESSION,
+        ARCA_PUT_BUCKET_COMPRESSION,
         ARCA_VIEW_SERVER_INFO,
         ARCA_MANAGE_USERS,
         ARCA_MANAGE_TEAMS,
@@ -72,6 +129,33 @@ pub mod actions {
         ARCA_MANAGE_CREDENTIALS,
         ARCA_CREATE_PRESIGNED_URL,
         ARCA_CREATE_ARCHIVE,
+    ];
+
+    /// The actions of the built-in `S3ReadOnlyAccess` grant: every read of
+    /// the S3 API (SQLite migration 29, PostgreSQL migration 19 store them).
+    pub const S3_READ_ONLY: &[&str] = &[
+        "s3:ListAllMyBuckets",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:ListBucketMultipartUploads",
+        "s3:GetBucketLocation",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketVersioning",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetBucketTagging",
+        "s3:GetReplicationConfiguration",
+        "s3:GetBucketNotification",
+        "s3:GetBucketObjectLockConfiguration",
+        "arca:GetBucketCompression",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetObjectAttributes",
+        "s3:GetObjectVersionAttributes",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersionTagging",
+        "s3:GetObjectRetention",
+        "s3:GetObjectLegalHold",
+        "s3:ListMultipartUploadParts",
     ];
 
     /// Returns true if the action is a known action or a valid wildcard pattern.
@@ -1064,8 +1148,13 @@ mod tests {
 
     #[test]
     fn builtin_s3_read_only() {
-        let json = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket","s3:ListAllMyBuckets","s3:GetBucketLocation","s3:GetBucketEncryption"],"Resource":["*"]}]}"#;
-        let doc = parse_policy_document(json).unwrap();
+        let json = serde_json::json!({
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": actions::S3_READ_ONLY, "Resource": ["*"]}]
+        })
+        .to_string();
+        let doc = parse_policy_document(&json).unwrap();
+        assert!(validate_policy_document(&doc).is_empty());
         assert_eq!(
             evaluate_policy(&doc, "s3:GetObject", "arn:aws:s3:::b/k"),
             Evaluation::Allow
