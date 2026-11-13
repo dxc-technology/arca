@@ -9,6 +9,9 @@ not enough and the handler must authorize every object it touches:
 - DeleteObjects deletes every key in its body;
 - `x-amz-bypass-governance-retention` needs `s3:BypassGovernanceRetention`.
 
+`TestPercentEncodedPaths` covers the request path itself: the router decodes
+bucket and key, so the policy must be evaluated on the decoded names.
+
 Refusals must not reveal whether the bucket or key exists.
 """
 
@@ -312,3 +315,59 @@ class TestGovernanceBypassAuthorization:
                 Bucket=bucket, Key="k", VersionId=vid, BypassGovernanceRetention=True
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestPercentEncodedPaths:
+    """A percent-encoded bucket or key must not dodge a Deny statement."""
+
+    @pytest.fixture
+    def guarded(self, s3_client, make_bucket):
+        bucket = make_bucket("guarded")
+        s3_client.put_object(Bucket=bucket, Key="private/s", Body=b"hidden")
+        s3_client.put_object(Bucket=bucket, Key="public/p", Body=b"shown")
+        return bucket
+
+    def _get(self, endpoint_url, creds, raw_path):
+        return signed_request("GET", f"{endpoint_url}{raw_path}", creds, keep_url=True)
+
+    def test_an_encoded_key_does_not_dodge_a_deny(self, endpoint_url, guarded):
+        statements = [
+            allow(["s3:*"], ["*"]),
+            {
+                "Effect": "Deny",
+                "Action": ["s3:GetObject"],
+                "Resource": [f"arn:aws:s3:::{guarded}/private/*"],
+            },
+        ]
+        with restricted_user(endpoint_url, statements) as creds:
+            resp = self._get(endpoint_url, creds, f"/{guarded}/privat%65/s")
+            assert resp.status_code == 403, resp.text
+            assert "<Code>AccessDenied</Code>" in resp.text
+            assert b"hidden" not in resp.content
+            assert self._get(endpoint_url, creds, f"/{guarded}/public/p").content == b"shown"
+
+    def test_an_encoded_bucket_does_not_dodge_a_deny(self, endpoint_url, guarded):
+        encoded = "%" + format(ord(guarded[0]), "02X") + guarded[1:]
+        statements = [
+            allow(["s3:*"], ["*"]),
+            {
+                "Effect": "Deny",
+                "Action": ["s3:*"],
+                "Resource": [f"arn:aws:s3:::{guarded}", f"arn:aws:s3:::{guarded}/*"],
+            },
+        ]
+        with restricted_user(endpoint_url, statements) as creds:
+            for path in (f"/{encoded}/public/p", f"/{encoded}?list-type=2"):
+                resp = self._get(endpoint_url, creds, path)
+                assert resp.status_code == 403, f"{path}: {resp.text}"
+                assert "<Code>AccessDenied</Code>" in resp.text, f"{path}: {resp.text}"
+
+    def test_an_encoded_key_matches_a_grant_on_its_decoded_name(
+        self, endpoint_url, s3_client, guarded
+    ):
+        s3_client.put_object(Bucket=guarded, Key="a b.txt", Body=b"spaced")
+        statements = [allow(["s3:GetObject"], [f"arn:aws:s3:::{guarded}/a b.txt"])]
+        with restricted_user(endpoint_url, statements) as creds:
+            resp = self._get(endpoint_url, creds, f"/{guarded}/a%20b.txt")
+            assert resp.status_code == 200, resp.text
+            assert resp.content == b"spaced"
