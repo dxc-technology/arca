@@ -159,6 +159,19 @@ Policy evaluation follows the standard IAM logic:
 !!! note
     The root user bypasses policy evaluation entirely. All requests from the root user are allowed regardless of grant configuration.
 
+## Operations That Touch Other Objects
+
+A request is authorized on the bucket and key it addresses: for a virtual-hosted request (`Host: bucket.<domain>`, with `[server] domain` set) that is the bucket in the host and the key in the path, exactly as the server executes it. Some operations also read or destroy objects named elsewhere in the request, and each of those objects is checked too:
+
+| Operation | Additional permission |
+|-----------|-----------------------|
+| CopyObject, UploadPartCopy | `s3:GetObject` on the `x-amz-copy-source` object |
+| DeleteObjects | `s3:DeleteObject` on every key in the body, instead of a single check on the bucket: the keys the caller may not delete come back as `AccessDenied` entries of the `DeleteResult`, and a request in which no key is deletable is refused with `403` |
+| `x-amz-bypass-governance-retention: true` (DeleteObject of a version, PutObjectRetention) | `s3:BypassGovernanceRetention` on the object; without it the header is ignored and GOVERNANCE retention applies |
+| `POST /admin/archive` | `arca:CreateArchive` to use the endpoint, plus `s3:GetObject` on every requested key: one unreadable key refuses the whole archive |
+
+These refusals come before any existence check, so they never reveal whether the source bucket or key exists.
+
 ## Managing Access Control
 
 Access control can be managed through three interfaces:

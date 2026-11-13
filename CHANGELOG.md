@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Virtual-hosted requests are authorized on the bucket they address.** With `[server] domain` set, the auth middleware evaluated grants on the path the client sent, before the rewrite to path style, while the handler ran on the rewritten one. A user allowed `s3:ListAllMyBuckets` could list any bucket with `GET /` and `Host: <bucket>.<domain>`, and a key path starting with the name of the user's own bucket (`/<own-bucket>/x`) borrowed that bucket's grant to read, write or delete `x` in the host's bucket. Grants are now evaluated on the routed request; the signature is still verified on the URI the client signed. This also lets a non-root user work on their own bucket virtual-hosted, which was refused before (`PUT /key` was checked as CreateBucket on `key`).
+- **CopyObject and UploadPartCopy need `s3:GetObject` on the source.** Only the destination was authorized, so any user who could write one bucket could copy, then read, any object of the server. A refused copy is `403 AccessDenied` whatever the source, so the copy no longer tells which buckets and keys exist.
+- **`POST /admin/archive` needs `s3:GetObject` on every key.** `arca:CreateArchive` alone let the caller download any object; it now only grants the use of the endpoint. One unreadable key refuses the whole archive before the bucket and keys are looked up.
+- **DeleteObjects checks `s3:DeleteObject` per key, as AWS does.** It was checked once, on the bucket ARN: a grant on `arn:aws:s3:::bucket` alone could delete every object, while a prefix grant such as `arn:aws:s3:::bucket/public/*` could delete nothing. Keys the caller may not delete come back as `AccessDenied` entries of the `DeleteResult`; a request with no deletable key is refused with `403` before the bucket is looked up. An empty request is now `MalformedXML`, as on AWS.
+- **`x-amz-bypass-governance-retention` needs `s3:BypassGovernanceRetention`.** The header was honoured for anyone allowed `s3:DeleteObject` (or `s3:PutObject` for PutObjectRetention), so GOVERNANCE retention protected nothing against them. Without the permission the header is now ignored. `s3:*` and `*` grants include it.
+
 ## [0.34.1] — 2026-10-30
 
 v0.34.0 was tagged but never published: the scans of its release run found the advisories under Security, so no image, binary or GitHub release exists for it. 0.34.1 is the first release with the changes below.

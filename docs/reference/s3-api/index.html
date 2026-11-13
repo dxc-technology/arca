@@ -2286,7 +2286,7 @@
 <a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nt">&lt;/Delete&gt;</span>
 </code></pre></div>
 <p>When <code>Quiet</code> is <code>true</code>, the response only includes errors. When <code>false</code> (default), the response includes both successfully deleted keys and errors.</p>
-<p>Returns <code>DeleteResult</code> XML. Deleting non-existent keys is not an error.</p>
+<p>Returns <code>DeleteResult</code> XML. Deleting non-existent keys is not an error. The request must name between 1 and 1000 keys (<code>MalformedXML</code> otherwise). <code>s3:DeleteObject</code> is checked per key: a key the caller may not delete is an <code>AccessDenied</code> entry of the result, and a request in which no key is deletable is refused with <code>403 AccessDenied</code>.</p>
 <h3 id="copyobject">CopyObject<a class="headerlink" href="#copyobject" title="Permanent link">&para;</a></h3>
 <p>Copy an object within or across buckets. The source is specified via the <code>x-amz-copy-source</code> header.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>PUT /{bucket}/{key+} HTTP/1.1

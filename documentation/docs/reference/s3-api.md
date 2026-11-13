@@ -162,7 +162,7 @@ POST /{bucket}?delete HTTP/1.1
 
 When `Quiet` is `true`, the response only includes errors. When `false` (default), the response includes both successfully deleted keys and errors.
 
-Returns `DeleteResult` XML. Deleting non-existent keys is not an error.
+Returns `DeleteResult` XML. Deleting non-existent keys is not an error. The request must name between 1 and 1000 keys (`MalformedXML` otherwise). `s3:DeleteObject` is checked per key: a key the caller may not delete is an `AccessDenied` entry of the result, and a request in which no key is deletable is refused with `403 AccessDenied`.
 
 ### CopyObject
 

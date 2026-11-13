@@ -1086,7 +1086,8 @@ Grants contain an IAM-compatible policy document with this structure:
 | `s3:DeleteBucketEncryption` | Delete bucket encryption configuration |
 | `s3:GetObject` | Get (download) an object |
 | `s3:PutObject` | Put (upload) an object |
-| `s3:DeleteObject` | Delete an object |
+| `s3:DeleteObject` | Delete an object (checked per key in DeleteObjects) |
+| `s3:BypassGovernanceRetention` | Honour `x-amz-bypass-governance-retention: true` on GOVERNANCE-retained objects |
 | `arca:*` | All Arca admin actions |
 | `arca:ViewServerInfo` | View server info and stats |
 | `arca:ManageUsers` | Manage users |
@@ -1094,7 +1095,7 @@ Grants contain an IAM-compatible policy document with this structure:
 | `arca:ManageGrants` | Manage grants |
 | `arca:ManageCredentials` | Manage credentials |
 | `arca:CreatePresignedUrl` | Generate presigned URLs |
-| `arca:CreateArchive` | Create archives |
+| `arca:CreateArchive` | Create archives (the caller also needs `s3:GetObject` on every archived key) |
 
 **Resource format**: `*` (all resources) or S3 ARN patterns like `arn:aws:s3:::bucket-name` (bucket-level) and `arn:aws:s3:::bucket-name/*` (object-level). Wildcards `*` and `?` are supported in ARN patterns.
 

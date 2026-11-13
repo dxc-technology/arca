@@ -19,6 +19,8 @@ from botocore.auth import S3SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 
+from rbac_helpers import allow, own_bucket_statements, restricted_user
+
 DOMAIN = os.environ.get("ARCA_VIRTUAL_HOST_DOMAIN")
 
 pytestmark = pytest.mark.skipif(
@@ -45,11 +47,12 @@ def bucket(s3_client):
 def vhost(endpoint_url):
     """Sends a signed virtual-hosted-style request: vhost(method, bucket, path)."""
 
-    def send(method, bucket, path="/", body=b"", query=""):
+    def send(method, bucket, path="/", body=b"", query="", creds=None):
         host = f"{bucket}.{DOMAIN}"
         url = f"http://{host}{path}" + (f"?{query}" if query else "")
         signed = AWSRequest(method=method, url=url, data=body)
-        S3SigV4Auth(Credentials(ACCESS_KEY, SECRET_KEY), "s3", "us-east-1").add_auth(signed)
+        creds = creds or Credentials(ACCESS_KEY, SECRET_KEY)
+        S3SigV4Auth(creds, "s3", "us-east-1").add_auth(signed)
         headers = dict(signed.headers.items())
         headers["Host"] = host
         target = urlparse(endpoint_url)
@@ -100,3 +103,53 @@ class TestVirtualHostedStyle:
         r = vhost("GET", f"no-such-{uuid.uuid4().hex[:8]}", "/k")
         assert r.status_code == 404
         assert "<Code>NoSuchBucket</Code>" in r.text
+
+
+class TestVirtualHostedAuthorization:
+    """A non-root user is authorized on the bucket in the Host, not the path.
+
+    The path of a virtual-hosted request is a key: authorizing on it as if it
+    were path style let `GET /` pass as ListBuckets and `/{own-bucket}/x`
+    borrow the grant of the caller's own bucket inside the Host's bucket.
+    """
+
+    @pytest.fixture
+    def own(self, s3_client):
+        name = f"test-vhost-own-{uuid.uuid4().hex[:8]}"
+        s3_client.create_bucket(Bucket=name)
+        yield name
+        for obj in s3_client.list_objects_v2(Bucket=name).get("Contents", []):
+            s3_client.delete_object(Bucket=name, Key=obj["Key"])
+        s3_client.delete_bucket(Bucket=name)
+
+    def test_the_bucket_root_is_not_list_buckets(self, endpoint_url, s3_client, bucket, own, vhost):
+        s3_client.put_object(Bucket=bucket, Key="hidden", Body=b"x")
+        with restricted_user(endpoint_url, own_bucket_statements(own)) as creds:
+            r = vhost("GET", bucket, "/", query="list-type=2", creds=creds)
+            assert r.status_code == 403, r.text
+            assert "<Key>hidden</Key>" not in r.text
+
+    def test_a_key_named_like_the_own_bucket_borrows_nothing(
+        self, endpoint_url, s3_client, bucket, own, vhost
+    ):
+        s3_client.put_object(Bucket=bucket, Key=f"{own}/existing", Body=b"theirs")
+        with restricted_user(endpoint_url, own_bucket_statements(own)) as creds:
+            assert vhost("GET", bucket, f"/{own}/existing", creds=creds).status_code == 403
+            assert vhost("PUT", bucket, f"/{own}/planted", b"x", creds=creds).status_code == 403
+            assert vhost("DELETE", bucket, f"/{own}/existing", creds=creds).status_code == 403
+        keys = [o["Key"] for o in s3_client.list_objects_v2(Bucket=bucket)["Contents"]]
+        assert keys == [f"{own}/existing"]
+
+    def test_a_key_is_not_authorized_as_a_bucket(self, endpoint_url, s3_client, bucket, vhost):
+        s3_client.put_object(Bucket=bucket, Key="secret.txt", Body=b"x")
+        with restricted_user(endpoint_url, [allow(["s3:ListBucket"], ["*"])]) as creds:
+            r = vhost("GET", bucket, "/secret.txt", creds=creds)
+            assert r.status_code == 403, r.text
+
+    def test_the_own_bucket_works_virtual_hosted(self, endpoint_url, own, vhost):
+        with restricted_user(endpoint_url, own_bucket_statements(own)) as creds:
+            assert vhost("PUT", own, "/k", b"mine", creds=creds).status_code == 200
+            r = vhost("GET", own, "/k", creds=creds)
+            assert r.status_code == 200 and r.content == b"mine"
+            r = vhost("GET", own, "/", query="list-type=2", creds=creds)
+            assert r.status_code == 200 and "<Key>k</Key>" in r.text

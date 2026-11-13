@@ -262,12 +262,20 @@ pub async fn auth_middleware(
         }
     };
 
-    // S3 authorization: evaluate policies for non-root users.
+    // S3 authorization: evaluate policies for non-root users, on the URI the
+    // handler executes. The signature above covers the URI the client sent,
+    // but a virtual-hosted request was rewritten since: `GET /` with
+    // `Host: {bucket}.{domain}` lists `{bucket}`, it is not ListBuckets.
     if !identity.is_root() {
-        let (action, resource) = determine_s3_action_resource(&method, &uri_path, &query_string);
-        let result = policy::evaluate_grants(&identity.effective_policies, action, &resource);
-        if !matches!(result, Evaluation::Allow) {
-            return s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, &uri_path));
+        let effective_path = request.uri().path().to_string();
+        let effective_query = request.uri().query().unwrap_or("");
+        if let Some((action, resource)) =
+            determine_s3_action_resource(&method, &effective_path, effective_query)
+        {
+            let result = policy::evaluate_grants(&identity.effective_policies, action, &resource);
+            if !matches!(result, Evaluation::Allow) {
+                return s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, &uri_path));
+            }
         }
     }
 
@@ -317,11 +325,20 @@ async fn resolve_identity(
     }))
 }
 
-/// Determines the S3 action and resource ARN from the HTTP method, path, and query.
+/// Determines the S3 action and resource ARN from the HTTP method, the
+/// effective (routed) path, and the query.
 ///
 /// Returns `(action, resource)` where action is an `s3:*` constant and resource
-/// is an ARN like `arn:aws:s3:::bucket` or `arn:aws:s3:::bucket/key`.
-fn determine_s3_action_resource(method: &str, path: &str, query: &str) -> (&'static str, String) {
+/// is an ARN like `arn:aws:s3:::bucket` or `arn:aws:s3:::bucket/key`, or `None`
+/// for an operation whose handler authorizes every object it touches instead
+/// (DeleteObjects: AWS checks `s3:DeleteObject` per key, so a single check on
+/// the bucket would be both too strict for prefix grants and too lax for a
+/// grant on the bucket ARN alone).
+fn determine_s3_action_resource(
+    method: &str,
+    path: &str,
+    query: &str,
+) -> Option<(&'static str, String)> {
     use arca_core::policy::actions::*;
 
     // Parse path segments: /{bucket}/{key...}
@@ -333,7 +350,7 @@ fn determine_s3_action_resource(method: &str, path: &str, query: &str) -> (&'sta
 
     // Service-level: GET /
     if bucket.is_empty() {
-        return (S3_LIST_ALL_MY_BUCKETS, "*".to_string());
+        return Some((S3_LIST_ALL_MY_BUCKETS, "*".to_string()));
     }
 
     // Object-level operations (bucket + key present)
@@ -353,7 +370,7 @@ fn determine_s3_action_resource(method: &str, path: &str, query: &str) -> (&'sta
                 }
                 _ => S3_GET_OBJECT,
             };
-            return (action, resource);
+            return Some((action, resource));
         }
     }
 
@@ -386,16 +403,15 @@ fn determine_s3_action_resource(method: &str, path: &str, query: &str) -> (&'sta
             }
         }
         "POST" => {
-            if query.contains("delete") {
-                S3_DELETE_OBJECT
-            } else {
-                S3_LIST_BUCKET
+            if crate::handlers::bucket::is_delete_objects_query(query) {
+                return None;
             }
+            S3_LIST_BUCKET
         }
         _ => S3_LIST_BUCKET,
     };
 
-    (action, resource)
+    Some((action, resource))
 }
 
 /// Parses an X-Amz-Date string (YYYYMMDDTHHMMSSZ) into a chrono DateTime.
@@ -549,6 +565,47 @@ mod tests {
             active: true,
             user_id: user_id.to_string(),
         }
+    }
+
+    #[test]
+    fn the_service_root_is_list_buckets() {
+        assert_eq!(
+            determine_s3_action_resource("GET", "/", ""),
+            Some(("s3:ListAllMyBuckets", "*".to_string()))
+        );
+    }
+
+    /// The middleware passes the routed path: a virtual-hosted `GET /` for
+    /// `finance` arrives here as `/finance`, a bucket listing.
+    #[test]
+    fn a_rewritten_bucket_root_is_list_bucket_on_that_bucket() {
+        assert_eq!(
+            determine_s3_action_resource("GET", "/finance", "list-type=2"),
+            Some(("s3:ListBucket", "arn:aws:s3:::finance".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_rewritten_key_is_authorized_in_the_host_bucket() {
+        assert_eq!(
+            determine_s3_action_resource("PUT", "/finance/own/x", ""),
+            Some(("s3:PutObject", "arn:aws:s3:::finance/own/x".to_string()))
+        );
+    }
+
+    #[test]
+    fn delete_objects_is_authorized_per_key_by_the_handler() {
+        for query in ["delete", "delete=", "delete&x=1", "x=1&delete"] {
+            assert_eq!(determine_s3_action_resource("POST", "/b", query), None, "{query}");
+        }
+    }
+
+    #[test]
+    fn another_bucket_post_is_still_checked() {
+        assert_eq!(
+            determine_s3_action_resource("POST", "/b", "undelete"),
+            Some(("s3:ListBucket", "arn:aws:s3:::b".to_string()))
+        );
     }
 
     /// THE regression test for the fail-closed fix: a valid credential whose

@@ -3930,7 +3930,11 @@ To create a credential for a different user, use
 </tr>
 <tr>
 <td><code>s3:DeleteObject</code></td>
-<td>Delete an object</td>
+<td>Delete an object (checked per key in DeleteObjects)</td>
+</tr>
+<tr>
+<td><code>s3:BypassGovernanceRetention</code></td>
+<td>Honour <code>x-amz-bypass-governance-retention: true</code> on GOVERNANCE-retained objects</td>
 </tr>
 <tr>
 <td><code>arca:*</code></td>
@@ -3962,7 +3966,7 @@ To create a credential for a different user, use
 </tr>
 <tr>
 <td><code>arca:CreateArchive</code></td>
-<td>Create archives</td>
+<td>Create archives (the caller also needs <code>s3:GetObject</code> on every archived key)</td>
 </tr>
 </tbody>
 </table>

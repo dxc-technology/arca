@@ -1838,6 +1838,18 @@ pub async fn delete_bucket(
 }
 
 /// POST /{bucket} — DeleteObjects (dispatched when `?delete` is present).
+/// Whether a bucket-level POST query is DeleteObjects: `?delete` or `?delete=`
+/// (mc sends the latter). Shared with the auth middleware, which leaves this
+/// operation to the per-key checks of [`delete_objects`].
+pub(crate) fn is_delete_objects_query(query: &str) -> bool {
+    query == "delete"
+        || query == "delete="
+        || query.starts_with("delete&")
+        || query.starts_with("delete=&")
+        || query.contains("&delete")
+        || query.contains("&delete=")
+}
+
 pub async fn post_bucket(
     State(state): State<AppState>,
     Path(bucket): Path<String>,
@@ -1845,15 +1857,7 @@ pub async fn post_bucket(
 ) -> Response {
     let query = request.uri().query().unwrap_or("");
 
-    // Check for ?delete or ?delete= (mc sends ?delete=).
-    let is_delete = query == "delete"
-        || query == "delete="
-        || query.starts_with("delete&")
-        || query.starts_with("delete=&")
-        || query.contains("&delete")
-        || query.contains("&delete=");
-
-    if !is_delete {
+    if !is_delete_objects_query(query) {
         return not_implemented_response(&format!("/{bucket}"));
     }
 
@@ -1904,18 +1908,10 @@ async fn delete_objects(
 ) -> Response {
     let resource = format!("/{bucket}");
     let marker_owner = crate::middleware::identity::requester_username(request.extensions());
-
-    // Check bucket exists.
-    match state.metadata.head_bucket(&bucket).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
-        }
-        Err(e) => return internal_error_response(e, &resource),
-    }
+    let (parts, body) = request.into_parts();
 
     // Read and parse XML body (1 MB limit).
-    let body_bytes = match axum::body::to_bytes(request.into_body(), 1_048_576).await {
+    let body_bytes = match axum::body::to_bytes(body, 1_048_576).await {
         Ok(b) => b,
         Err(_) => {
             return s3_error_response(S3Error::with_message(
@@ -1947,13 +1943,40 @@ async fn delete_objects(
         }
     };
 
-    // S3 limits DeleteObjects to 1000 keys.
-    if delete_body.objects.len() > 1000 {
+    // S3 limits DeleteObjects to 1 to 1000 keys.
+    if delete_body.objects.is_empty() || delete_body.objects.len() > 1000 {
         return s3_error_response(S3Error::with_message(
             S3ErrorCode::MalformedXML,
-            "The delete request contained more than 1000 objects",
+            "The delete request must contain between 1 and 1000 objects",
             &resource,
         ));
+    }
+
+    // The auth middleware leaves this operation to us: `s3:DeleteObject` is
+    // checked per key, as AWS does. A caller who may delete none of the keys
+    // is refused outright, before learning whether the bucket exists.
+    let deletable: Vec<bool> = delete_body
+        .objects
+        .iter()
+        .map(|obj| {
+            crate::authorize::is_authorized(
+                &parts.extensions,
+                arca_core::policy::actions::S3_DELETE_OBJECT,
+                &crate::authorize::object_arn(&bucket, &obj.key),
+            )
+        })
+        .collect();
+    if !deletable.contains(&true) {
+        return s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, &resource));
+    }
+
+    // Check bucket exists.
+    match state.metadata.head_bucket(&bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
     }
 
     let quiet = delete_body.quiet;
@@ -1975,7 +1998,16 @@ async fn delete_objects(
     // the metadata backend applies in one transaction.
     let mut outcomes = Vec::with_capacity(delete_body.objects.len());
     let mut batch = Vec::new();
-    for obj in &delete_body.objects {
+    for (obj, deletable) in delete_body.objects.iter().zip(deletable) {
+        if !deletable {
+            outcomes.push(Outcome::Failed(DeleteErrorEntry {
+                key: obj.key.clone(),
+                version_id: obj.version_id.clone(),
+                code: S3ErrorCode::AccessDenied.as_str().to_string(),
+                message: "Access Denied".to_string(),
+            }));
+            continue;
+        }
         // Per-key conditional checks (ETag, LastModifiedTime, IfMatchSize),
         // evaluated authoritatively inside the batch below — no early
         // pre-filter, so a version-specific delete is checked against that

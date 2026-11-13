@@ -45,6 +45,14 @@ impl AdminError {
         }
     }
 
+    pub fn forbidden(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            error: "AccessDenied",
+            message: msg.into(),
+        }
+    }
+
     pub fn bad_request(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,

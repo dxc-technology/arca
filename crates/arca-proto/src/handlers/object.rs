@@ -40,11 +40,29 @@ fn string_to_latin1(s: &str) -> Vec<u8> {
         .collect()
 }
 
+/// Whether the request may bypass GOVERNANCE retention on `bucket/key`: it
+/// sends `x-amz-bypass-governance-retention: true` AND its caller holds
+/// `s3:BypassGovernanceRetention` on the object, as AWS requires. The header
+/// alone, with only `s3:DeleteObject` or `s3:PutObject`, is not enough.
+fn governance_bypass_allowed(request: &axum::extract::Request, bucket: &str, key: &str) -> bool {
+    let requested = request
+        .headers()
+        .get("x-amz-bypass-governance-retention")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    requested
+        && crate::authorize::is_authorized(
+            request.extensions(),
+            arca_core::policy::actions::S3_BYPASS_GOVERNANCE_RETENTION,
+            &crate::authorize::object_arn(bucket, key),
+        )
+}
+
 /// Check if Object Lock allows hard-deletion of an object version.
 /// Returns Ok(()) if deletion is allowed, Err(S3Error) if blocked.
 fn check_object_lock_allows_delete(
     record: &ObjectRecord,
-    headers: &http::HeaderMap,
+    bypass_governance: bool,
 ) -> Result<(), S3Error> {
     let now = chrono::Utc::now();
     let resource = format!("/{}/{}", record.bucket, record.key);
@@ -73,20 +91,13 @@ fn check_object_lock_allows_delete(
                     ));
                 }
                 "GOVERNANCE" => {
-                    let bypass = headers
-                        .get("x-amz-bypass-governance-retention")
-                        .and_then(|v| v.to_str().ok())
-                        .map(|v| v.eq_ignore_ascii_case("true"))
-                        .unwrap_or(false);
-                    if !bypass {
+                    if !bypass_governance {
                         return Err(S3Error::with_message(
                             S3ErrorCode::AccessDenied,
                             "Object is protected by GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to delete",
                             &resource,
                         ));
                     }
-                    // With bypass header, GOVERNANCE allows deletion
-                    // (permission check is done by the auth middleware)
                 }
                 _ => {}
             }
@@ -914,6 +925,26 @@ pub async fn put_object(
         .expect("build put_object response")
 }
 
+/// Refuses a copy whose caller may not read the source object.
+///
+/// The auth middleware authorized the destination from the request path; the
+/// source is named by `x-amz-copy-source`, so it is checked here, before
+/// anything reveals whether the source bucket or key exists (AWS requires
+/// `s3:GetObject` on the source of CopyObject and UploadPartCopy).
+fn authorize_copy_source(
+    extensions: &http::Extensions,
+    src_bucket: &str,
+    src_key: &str,
+    resource: &str,
+) -> Result<(), Response> {
+    let source = crate::authorize::object_arn(src_bucket, src_key);
+    if crate::authorize::is_authorized(extensions, arca_core::policy::actions::S3_GET_OBJECT, &source) {
+        Ok(())
+    } else {
+        Err(s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, resource)))
+    }
+}
+
 /// CopyObject — copies a source object to the destination bucket/key.
 ///
 /// Streams the source blob through `BlobStore::get()` → `BlobStore::put()` to reuse
@@ -944,6 +975,9 @@ async fn copy_object(
             ));
         }
     };
+    if let Err(denied) = authorize_copy_source(request.extensions(), &src_bucket, &src_key, &resource) {
+        return denied;
+    }
 
     // Check destination bucket exists.
     match state.metadata.head_bucket(&dest_bucket).await {
@@ -1358,6 +1392,9 @@ async fn upload_part_copy(
             ));
         }
     };
+    if let Err(denied) = authorize_copy_source(request.extensions(), &src_bucket, &src_key, &resource) {
+        return denied;
+    }
 
     // Parse optional x-amz-copy-source-range header.
     let copy_range = request
@@ -2157,6 +2194,7 @@ pub async fn delete_object(
 
     let resource = format!("/{bucket}/{key}");
     let headers = request.headers().clone();
+    let bypass_governance = governance_bypass_allowed(&request, &bucket, &key);
 
     // Check bucket exists (S3 returns NoSuchBucket, not NoSuchKey).
     match state.metadata.head_bucket(&bucket).await {
@@ -2177,7 +2215,7 @@ pub async fn delete_object(
         // entirely when the targeted version is itself a delete marker.
         if let Ok(Some(lock_record)) = state.metadata.get_object_version(&bucket, &key, vid).await {
             if !lock_record.is_delete_marker {
-                if let Err(e) = check_object_lock_allows_delete(&lock_record, &headers) {
+                if let Err(e) = check_object_lock_allows_delete(&lock_record, bypass_governance) {
                     return s3_error_response(e);
                 }
                 if let Err(code) = delete_pre.evaluate(Some(&lock_record)) {
@@ -2649,13 +2687,7 @@ async fn put_object_retention(
         .find(|(k, _)| k == "versionId")
         .map(|(_, v)| v.into_owned());
 
-    // Check bypass governance header
-    let bypass_governance = request
-        .headers()
-        .get("x-amz-bypass-governance-retention")
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    let bypass_governance = governance_bypass_allowed(&request, bucket, key);
 
     // Parse XML body
     let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {

@@ -632,6 +632,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operations-that-touch-other-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operations That Touch Other Objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#managing-access-control" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1560,6 +1571,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operations-that-touch-other-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operations That Touch Other Objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#managing-access-control" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1796,6 +1818,35 @@
 <p class="admonition-title">Note</p>
 <p>The root user bypasses policy evaluation entirely. All requests from the root user are allowed regardless of grant configuration.</p>
 </div>
+<h2 id="operations-that-touch-other-objects">Operations That Touch Other Objects<a class="headerlink" href="#operations-that-touch-other-objects" title="Permanent link">&para;</a></h2>
+<p>A request is authorized on the bucket and key it addresses: for a virtual-hosted request (<code>Host: bucket.&lt;domain&gt;</code>, with <code>[server] domain</code> set) that is the bucket in the host and the key in the path, exactly as the server executes it. Some operations also read or destroy objects named elsewhere in the request, and each of those objects is checked too:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Additional permission</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CopyObject, UploadPartCopy</td>
+<td><code>s3:GetObject</code> on the <code>x-amz-copy-source</code> object</td>
+</tr>
+<tr>
+<td>DeleteObjects</td>
+<td><code>s3:DeleteObject</code> on every key in the body, instead of a single check on the bucket: the keys the caller may not delete come back as <code>AccessDenied</code> entries of the <code>DeleteResult</code>, and a request in which no key is deletable is refused with <code>403</code></td>
+</tr>
+<tr>
+<td><code>x-amz-bypass-governance-retention: true</code> (DeleteObject of a version, PutObjectRetention)</td>
+<td><code>s3:BypassGovernanceRetention</code> on the object; without it the header is ignored and GOVERNANCE retention applies</td>
+</tr>
+<tr>
+<td><code>POST /admin/archive</code></td>
+<td><code>arca:CreateArchive</code> to use the endpoint, plus <code>s3:GetObject</code> on every requested key: one unreadable key refuses the whole archive</td>
+</tr>
+</tbody>
+</table>
+<p>These refusals come before any existence check, so they never reveal whether the source bucket or key exists.</p>
 <h2 id="managing-access-control">Managing Access Control<a class="headerlink" href="#managing-access-control" title="Permanent link">&para;</a></h2>
 <p>Access control can be managed through three interfaces:</p>
 <ul>

@@ -12,12 +12,14 @@ use std::pin::Pin;
 
 use axum::extract::State;
 use axum::response::Response;
-use axum::Json;
+use axum::{Extension, Json};
 use http::StatusCode;
 use serde::Deserialize;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 
+use crate::authorize::{authorize, object_arn};
+use crate::middleware::identity::AuthenticatedIdentity;
 use crate::state::AppState;
 
 use super::admin::AdminError;
@@ -33,12 +35,30 @@ pub struct ArchiveRequest {
 // -- Handler --
 
 /// POST /admin/archive — stream a tar.gz archive of the requested objects.
+///
+/// `arca:CreateArchive` (checked by the admin middleware) only grants the use
+/// of the endpoint: an archive reads objects, so the caller needs
+/// `s3:GetObject` on every requested key. One unreadable key refuses the whole
+/// archive, before anything reveals whether the bucket or the keys exist.
 pub async fn archive(
     State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
     Json(body): Json<ArchiveRequest>,
 ) -> Result<Response, AdminError> {
     if body.keys.is_empty() {
         return Err(AdminError::bad_request("keys list must not be empty"));
+    }
+
+    let action = arca_core::policy::actions::S3_GET_OBJECT;
+    if let Some(key) = body
+        .keys
+        .iter()
+        .find(|key| authorize(&identity, action, &object_arn(&body.bucket, key)).is_err())
+    {
+        return Err(AdminError::forbidden(format!(
+            "Access denied to object '{key}' in bucket '{}'",
+            body.bucket
+        )));
     }
 
     // Verify the bucket exists.
