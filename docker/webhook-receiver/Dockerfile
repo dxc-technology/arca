@@ -7,9 +7,10 @@ FROM python:alpine
 # 2.42.1-r0 -- CVE-2026-53612, -53613, -53614, -76642, -78408, -78409, -78410,
 # -27456. `>=` rather than `=` because Alpine drops superseded versions from
 # the repo index, turning an exact pin into a build failure later on.
+# zlib >= 1.4-r0 -- CVE-2026-4738 (the base image ships 1.3.2-r1).
 # pip is unused here (the server is pure stdlib) and vendors outdated copies
 # of msgpack/setuptools, so it goes too.
-RUN apk add --no-cache 'libuuid>=2.42.3-r1' && \
+RUN apk add --no-cache 'libuuid>=2.42.3-r1' 'zlib>=1.4-r0' && \
     rm -rf /usr/local/lib/python*/site-packages/pip \
            /usr/local/lib/python*/site-packages/pip-*.dist-info \
            /usr/local/lib/python*/ensurepip /usr/local/bin/pip*

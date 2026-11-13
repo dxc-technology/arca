@@ -15,10 +15,10 @@ FROM rust:1.98.1-alpine3.24 AS builder
 # no package database. Point constraints, never a blanket `apk upgrade`:
 #   musl-dev >= 1.2.6-r3 -- musl CVE-2026-107891 (the base image ships
 #   1.2.6-r2).
-#   zlib-dev/zlib-static >= 1.3.2-r1 -- zlib CVE-2026-85091 (the base image
-#   ships 1.3.2-r0).
+#   zlib-dev/zlib-static >= 1.4-r0 -- zlib CVE-2026-85091 and CVE-2026-4738
+#   (the base image ships 1.3.2-r0).
 RUN apk add --no-cache 'musl-dev>=1.2.6-r3' perl cmake make g++ curl-dev linux-headers \
-        'zlib-dev>=1.3.2-r1' 'zlib-static>=1.3.2-r1' protobuf-dev protoc
+        'zlib-dev>=1.4-r0' 'zlib-static>=1.4-r0' protobuf-dev protoc
 
 WORKDIR /build
 

@@ -32,11 +32,10 @@ LABEL org.opencontainers.image.title="Arca Console" \
 # (endpoint injection) at startup, so those paths — plus nginx's own temp/
 # cache/pid dirs, which default to root-owned /run — must be owned by that
 # user.
-# No package pins: the base image ships every fixed version the scanners ask
-# for. Should an advisory need one, add a point constraint here
-# ('pkg>=version', naming the package and the advisory), never a blanket
-# `apk upgrade`, which would make the build irreproducible.
-RUN apk add --no-cache nginx && \
+# Point constraints only, never a blanket `apk upgrade`, which would make the
+# build irreproducible:
+#   zlib >= 1.4-r0 -- zlib CVE-2026-4738 (the base image ships 1.3.2-r1).
+RUN apk add --no-cache nginx 'zlib>=1.4-r0' && \
     deluser nginx && \
     addgroup -g 10001 nginx && \
     adduser -D -H -h /var/lib/nginx -u 10001 -G nginx -s /sbin/nologin nginx && \
