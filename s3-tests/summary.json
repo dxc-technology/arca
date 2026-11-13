@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-10-17T15:42:20Z",
+  "timestamp": "2026-11-13T15:40:06Z",
   "total": 825,
-  "passed": 385,
-  "failed": 349,
+  "passed": 383,
+  "failed": 351,
   "skipped": 91,
   "unexpected_failures": 0,
-  "pass_pct": 46.7,
+  "pass_pct": 46.4,
   "out_of_scope_excluded": 5,
   "aws_divergences": [
     "test_object_checksum_crc64nvme",
@@ -13,9 +13,9 @@
   ],
   "categories": {
     "ACL/Policy": {
-      "total": 119,
-      "passed": 5,
-      "failed": 112,
+      "total": 120,
+      "passed": 4,
+      "failed": 114,
       "skipped": 2
     },
     "Anonymous": {
@@ -31,8 +31,8 @@
       "skipped": 0
     },
     "Bucket": {
-      "total": 103,
-      "passed": 103,
+      "total": 102,
+      "passed": 102,
       "failed": 0,
       "skipped": 0
     },

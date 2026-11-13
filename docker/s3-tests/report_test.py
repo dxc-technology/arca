@@ -95,3 +95,9 @@ def test_html_escapes_untrusted_text_and_is_self_contained(tmp_path):
     assert "<b>" not in html.split("<pre>", 1)[1].split("</pre>")[0]
     assert "googleapis" not in html
     assert "src=" not in html
+
+
+def test_a_test_ending_on_an_object_acl_call_is_an_expected_acl_failure(tmp_path):
+    [t] = parse(tmp_path, junit(failed("test_bucket_create_special_key_names", "NotImplemented")))
+    assert t["category"] == "ACL/Policy"
+    assert t["expected_fail"]

@@ -145,13 +145,13 @@
   <h1>S3 compatibility report</h1>
   <p class="lede">How Arca fares against the Ceph s3-tests suite, the reference conformance
   suite for S3-compatible servers. 5 Ceph/RGW-specific test(s) are excluded from scope.</p>
-  <p class="stamp">2026-10-17 15:42:20 UTC</p>
+  <p class="stamp">2026-11-13 15:40:06 UTC</p>
 
   <div class="score">
-    <div class="big">46.7<small>%</small></div>
-    <div class="of"><b>385</b> of 825 in-scope tests pass</div>
+    <div class="big">46.4<small>%</small></div>
+    <div class="of"><b>383</b> of 825 in-scope tests pass</div>
   </div>
-  <div class="stack" role="img" aria-label="outcome distribution"><span class="p" style="width:46.67%" title="385 passed"></span><span class="f" style="width:42.30%" title="349 failed"></span><span class="s" style="width:11.03%" title="91 skipped"></span></div>
+  <div class="stack" role="img" aria-label="outcome distribution"><span class="p" style="width:46.42%" title="383 passed"></span><span class="f" style="width:42.55%" title="351 failed"></span><span class="s" style="width:11.03%" title="91 skipped"></span></div>
   <div class="legend">
     <span><i style="background:var(--pass)"></i>Passed</span>
     <span><i style="background:var(--fail)"></i>Failed</span>
@@ -160,10 +160,10 @@
 
   <div class="stats">
     <div class="stat"><div class="v">825</div><div class="l">Total</div></div>
-    <div class="stat pass"><div class="v">385</div><div class="l">Passed</div></div>
-    <div class="stat fail"><div class="v">349</div><div class="l">Failed</div></div>
+    <div class="stat pass"><div class="v">383</div><div class="l">Passed</div></div>
+    <div class="stat fail"><div class="v">351</div><div class="l">Failed</div></div>
     <div class="stat skip"><div class="v">91</div><div class="l">Skipped</div></div>
-    <div class="stat"><div class="v">349</div><div class="l">Expected failures</div></div>
+    <div class="stat"><div class="v">351</div><div class="l">Expected failures</div></div>
   </div>
 </header>
 
@@ -174,9 +174,9 @@
     <div class="cats">
         <div class="cat">
           <div class="name">ACL/Policy</div>
-          <div class="stack" role="img" aria-label="outcome distribution"><span class="p" style="width:4.20%" title="5 passed"></span><span class="f" style="width:94.12%" title="112 failed"></span><span class="s" style="width:1.68%" title="2 skipped"></span></div>
-          <div class="counts"><span class="p">5 passed</span> &nbsp;<span class="f">112 failed</span> &nbsp;<span class="s">2 skipped</span> &nbsp;of 119</div>
-          <div class="rate bad">4%</div>
+          <div class="stack" role="img" aria-label="outcome distribution"><span class="p" style="width:3.33%" title="4 passed"></span><span class="f" style="width:95.00%" title="114 failed"></span><span class="s" style="width:1.67%" title="2 skipped"></span></div>
+          <div class="counts"><span class="p">4 passed</span> &nbsp;<span class="f">114 failed</span> &nbsp;<span class="s">2 skipped</span> &nbsp;of 120</div>
+          <div class="rate bad">3%</div>
         </div>
         <div class="cat">
           <div class="name">Anonymous</div>
@@ -192,8 +192,8 @@
         </div>
         <div class="cat">
           <div class="name">Bucket</div>
-          <div class="stack" role="img" aria-label="outcome distribution"><span class="p" style="width:100.00%" title="103 passed"></span></div>
-          <div class="counts"><span class="p">103 passed</span> &nbsp;<span class="f">0 failed</span> &nbsp;<span class="s">0 skipped</span> &nbsp;of 103</div>
+          <div class="stack" role="img" aria-label="outcome distribution"><span class="p" style="width:100.00%" title="102 passed"></span></div>
+          <div class="counts"><span class="p">102 passed</span> &nbsp;<span class="f">0 failed</span> &nbsp;<span class="s">0 skipped</span> &nbsp;of 102</div>
           <div class="rate good">100%</div>
         </div>
         <div class="cat">
@@ -304,12 +304,19 @@
         </details>
       </section>
 
+      <section>
+        <h2>Passlist diff<span class="count">+0 / -2</span></h2>
+        <p class="sub">Changes against the previous passlist.</p>
+        <div class="diff"><div class="lost">- test_bucket_create_special_key_names</div>
+<div class="lost">- test_object_acl_full_control_verify_owner</div>
+</div>
+      </section>
   <section>
-    <h2>Failures<span class="count">349 total, 0 unexpected</span></h2>
+    <h2>Failures<span class="count">351 total, 0 unexpected</span></h2>
     <p class="sub">Click a test to see its assertion message.</p>
     <p class="ok">No unexpected failures.</p>
         <details class="group">
-          <summary>Show the 349 expected failures (features Arca does not implement yet)</summary>
+          <summary>Show the 351 expected failures (features Arca does not implement yet)</summary>
           <div style="margin-top:.6rem">
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_100_continue</code></summary>
@@ -381,7 +388,7 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_block_public_restrict_public_buckets</code></summary>
-          <pre>botocore.errorfactory.NoSuchBucket: An error occurred (NoSuchBucket) when calling the PutObject operation: The specified bucket does not exist.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the DeletePublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_bucket_acl_canned</code></summary>
@@ -456,6 +463,10 @@
           <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="item">
+          <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_bucket_create_special_key_names</code></summary>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
+        </details>
+        <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_bucket_header_acl_grants</code></summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
@@ -465,11 +476,11 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_bucket_list_return_data</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Versioning</span><code>test_bucket_list_return_data_versioning</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Anonymous</span><code>test_bucket_listv2_objects_anonymous</code></summary>
@@ -985,12 +996,10 @@
   
   At index 0 diff: 404 != 501
   
-  Full diff:
+  Full diff: (-: missing in left side, +: extra in left side)
     (
   -     501,
-  ?     ^ ^...
-  
-  ...Full output truncated (5 lin</pre>
+  </pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_create_bucket_object_writer</code></summary>
@@ -1079,7 +1088,7 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Not Implemented</span><code>test_get_object_torrent</code></summary>
-          <pre>assert 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_get_public_acl_bucket_policy_status</code></summary>
@@ -1103,10 +1112,7 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_get_undefined_public_block</code></summary>
-          <pre>AssertionError: assert 'NotImplemented' == 'NoSuchPublic...Configuration'
-  
-  - NoSuchPublicAccessBlockConfiguration
-  + NotImplemented</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the DeletePublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Versioning</span><code>test_get_versioned_object_attributes</code></summary>
@@ -1136,17 +1142,17 @@
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Lifecycle</span><code>test_lifecycle_expiration_header_head</code></summary>
           <pre>assert False
- +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': '5da8f1d6-2ea9-455e-b220-f5965d82214e', 'HostId': 'NWRhOGYxZDYtMmVhOS00NTVlLWIyMjAtZjU5NjVkODIyMTRl'</pre>
+[+1 more line; full report in element text]</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Lifecycle</span><code>test_lifecycle_expiration_header_put</code></summary>
           <pre>assert False
- +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': 'c122bf7c-6801-4bf9-ad1c-642657b55e4a', 'HostId': 'YzEyMmJmN2MtNjgwMS00YmY5LWFkMWMtNjQyNjU3YjU1ZTRh'</pre>
+[+1 more line; full report in element text]</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Tagging</span><code>test_lifecycle_expiration_header_tags_head</code></summary>
           <pre>assert False
- +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': '9d86d79c-825d-42f1-bd29-3649ce76065e', 'HostId': 'OWQ4NmQ3OWMtODI1ZC00MmYxLWJkMjktMzY0OWNlNzYwNjVl'</pre>
+[+4 more lines; full report in element text]</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Lifecycle</span><code>test_lifecycle_expiration_newer_noncurrent</code></summary>
@@ -1163,7 +1169,7 @@
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Lifecycle</span><code>test_lifecycle_expiration_size_lt</code></summary>
           <pre>assert 2 == 1
- +  where 2 = len([{'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 10, 17, 15, 1, 0, 607000, tzinfo=tzlocal()), 'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Size': 3000</pre>
+ +  where 2 = len([{'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 11, 13, 15, 35, 6, 401000, tzinfo=tzlocal()), 'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Size': 300</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Tagging</span><code>test_lifecycle_expiration_tags1</code></summary>
@@ -1218,7 +1224,7 @@
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Not Implemented</span><code>test_list_buckets_paginated</code></summary>
           <pre>AssertionError: assert 2 == 1
- +  where 2 = len([{'Name': 'arca-test-gpq3fdjirlgdqhqdp7e-259', 'CreationDate': datetime.datetime(2026, 10, 17, 14, 56, 0, 84000, tzinfo=tzlocal())}, {'Name': 'arca-test</pre>
+ +  where 2 = len([{'Name': 'arca-test-yj26o2xuwoftp92upcq-259', 'CreationDate': datetime.datetime(2026, 11, 13, 15, 30, 24, 194000, tzinfo=tzlocal())}, {'Name': 'arca-te</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_list_multipart_upload_owner</code></summary>
@@ -1234,15 +1240,15 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_canned</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_canned_authenticatedread</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_canned_bucketownerfullcontrol</code></summary>
@@ -1254,35 +1260,39 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_canned_during_create</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_canned_publicreadwrite</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_default</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_full_control_verify_attributes</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
+        </details>
+        <details class="item">
+          <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_full_control_verify_owner</code></summary>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_read</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_readacp</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_write</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_acl_writeacp</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Anonymous</span><code>test_object_anon_put_write_access</code></summary>
@@ -1294,7 +1304,7 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_copy_not_owned_object_bucket</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Anonymous</span><code>test_object_delete_key_bucket_gone</code></summary>
@@ -1302,55 +1312,55 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_header_acl_grants</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_changing_mode_from_compliance</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.352082 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.522696 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_changing_mode_from_governance_with_bypass</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.397983 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.55234 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_changing_mode_from_governance_without_bypass</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.375131 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.537392 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_delete_multipart_object_with_legal_hold_on</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.49011 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.611091 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_delete_multipart_object_with_retention</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.715044 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.757278 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_delete_object_with_legal_hold_off</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.467222 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.596488 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_delete_object_with_legal_hold_on</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.512606 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.625401 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_delete_object_with_retention</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.737959 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.771704 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_delete_object_with_retention_and_marker</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.691591 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.742814 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_get_legal_hold</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.558084 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.654332 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_get_legal_hold_invalid_bucket</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.535189 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.639944 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_get_obj_metadata</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.444492 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.581917 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_get_obj_retention_invalid_bucket</code></summary>
@@ -1358,19 +1368,19 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_multi_delete_object_with_retention</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.649813 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.728403 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_legal_hold</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.626747 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.714172 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_legal_hold_invalid_bucket</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.603742 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.699777 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_legal_hold_invalid_status</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.581097 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.668851 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_obj_lock_enable_after_create</code></summary>
@@ -1389,7 +1399,7 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_obj_retention_increase_period</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.807568 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.814946 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_obj_retention_override_default_retention</code></summary>
@@ -1397,23 +1407,23 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_obj_retention_override_default_retention</code></summary>
-          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.832618 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.829637 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_obj_retention_shorten_period</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.783853 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.800331 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_put_obj_retention_shorten_period_bypass</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.760909 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.786004 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Object Lock</span><code>test_object_lock_uploading_obj</code></summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-ynvqgrlhcg8h34fxu2e-19 still has objects locked for 86399.421502 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-w3fyyv51i48k9i1zy1c-19 still has objects locked for 86399.567295 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">ACL/Policy</span><code>test_object_put_acl_mtime</code></summary>
-          <pre>assert datetime.datetime(2026, 10, 17, 14, 54, 17, tzinfo=tzutc()) == datetime.datetime(2026, 10, 17, 14, 54, 19, tzinfo=tzutc())</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Anonymous</span><code>test_object_raw_get</code></summary>
@@ -1760,11 +1770,11 @@
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Versioning</span><code>test_versioned_object_acl</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="item">
           <summary><span class="tag expected">Expected</span><span class="tag">Versioning</span><code>test_versioned_object_acl_no_version_specified</code></summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetObjectAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details></div>
         </details>
   </section>

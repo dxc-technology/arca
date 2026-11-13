@@ -36,6 +36,8 @@ CATEGORY_OVERRIDES = {
     "test_object_read_unreadable": "ACL/Policy",
     "test_put_obj_enc_conflict_c_s3": "Encryption",
     "test_lifecycle_multipart_expiration": "Lifecycle",
+    # Ends with PutObjectAcl on every key, and object ACLs are not implemented
+    "test_bucket_create_special_key_names": "ACL/Policy",
     # RGW-specific extensions (not AWS S3 API)
     "test_bucket_head_extended": "RGW Extensions",
     "test_head_bucket_usage": "RGW Extensions",
