@@ -570,13 +570,13 @@ const LEGACY_COVERAGE: &[(&str, &[&str])] = &[
 /// - **Deny** statements gain every granular action their coarse actions used
 ///   to cover: `Deny s3:GetObject` kept versions, tags and retention out of
 ///   reach, and must keep doing so now that those have their own actions.
-/// - **Allow** statements are not widened. They narrow to AWS semantics on
+/// - **Allow** statements are never widened. They narrow to AWS semantics on
 ///   their own (the point of the change), and only the renamed encryption
 ///   actions are carried over: `s3:GetBucketEncryption` becomes
-///   `s3:GetEncryptionConfiguration`, `s3:PutBucketEncryption` becomes
-///   `s3:PutEncryptionConfiguration`, and `s3:DeleteBucketEncryption` is
-///   dropped, since its AWS action (`PutEncryptionConfiguration`) would also
-///   allow setting the configuration.
+///   `s3:GetEncryptionConfiguration`. `s3:PutEncryptionConfiguration` both
+///   sets and removes the configuration, so it replaces
+///   `s3:PutBucketEncryption` and `s3:DeleteBucketEncryption` only in a
+///   statement that allowed both; either one alone is dropped.
 /// - In a Deny, all three old encryption names become their AWS actions.
 pub fn migrate_legacy_actions(doc: &mut PolicyDocument) -> bool {
     const OLD_GET_ENCRYPTION: &str = "s3:GetBucketEncryption";
@@ -585,6 +585,8 @@ pub fn migrate_legacy_actions(doc: &mut PolicyDocument) -> bool {
 
     let mut changed = false;
     for statement in &mut doc.statement {
+        let has = |name: &str| statement.action.iter().any(|a| a == name);
+        let allow_put_encryption = has(OLD_PUT_ENCRYPTION) && has(OLD_DELETE_ENCRYPTION);
         let mut migrated: Vec<String> = Vec::new();
         let push = |action: &str, list: &mut Vec<String>| {
             if !list.iter().any(|a| a == action) {
@@ -596,10 +598,14 @@ pub fn migrate_legacy_actions(doc: &mut PolicyDocument) -> bool {
                 (_, OLD_GET_ENCRYPTION) => {
                     push(actions::S3_GET_ENCRYPTION_CONFIGURATION, &mut migrated)
                 }
-                (_, OLD_PUT_ENCRYPTION) | (Effect::Deny, OLD_DELETE_ENCRYPTION) => {
+                (Effect::Deny, OLD_PUT_ENCRYPTION | OLD_DELETE_ENCRYPTION) => {
                     push(actions::S3_PUT_ENCRYPTION_CONFIGURATION, &mut migrated)
                 }
-                (Effect::Allow, OLD_DELETE_ENCRYPTION) => {}
+                (Effect::Allow, OLD_PUT_ENCRYPTION | OLD_DELETE_ENCRYPTION) => {
+                    if allow_put_encryption {
+                        push(actions::S3_PUT_ENCRYPTION_CONFIGURATION, &mut migrated)
+                    }
+                }
                 (effect, other) => {
                     push(other, &mut migrated);
                     if effect == Effect::Deny {
@@ -1410,11 +1416,15 @@ mod tests {
     fn old_encryption_names_are_renamed_without_widening_an_allow() {
         let allow = r#"{"Version":"2012-10-17","Statement":[
             {"Effect":"Allow","Action":["s3:GetBucketEncryption","s3:PutBucketEncryption","s3:DeleteBucketEncryption"],"Resource":["*"]},
-            {"Effect":"Allow","Action":["s3:DeleteBucketEncryption","s3:GetObject"],"Resource":["*"]}]}"#;
+            {"Effect":"Allow","Action":["s3:DeleteBucketEncryption","s3:GetObject"],"Resource":["*"]},
+            {"Effect":"Allow","Action":["s3:PutBucketEncryption","s3:GetObject"],"Resource":["*"]}]}"#;
+        // PutEncryptionConfiguration sets AND removes: only a statement that
+        // allowed both gets it.
         assert_eq!(
             statement_actions(allow),
             [
                 vec!["s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration"],
+                vec!["s3:GetObject"],
                 vec!["s3:GetObject"],
             ]
         );
