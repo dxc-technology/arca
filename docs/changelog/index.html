@@ -5748,6 +5748,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>A subresource Arca does not implement is answered <code>501</code></strong> instead of falling through to the plain operation: <code>DELETE /&lt;bucket&gt;?cors</code> deleted the bucket when it was empty, <code>PUT /&lt;bucket&gt;/&lt;key&gt;?acl</code> overwrote the object with the ACL document and <code>GET ?acl</code> returned the object's content.</li>
+<li><strong>A legal hold set on PutObject is applied.</strong> PutObject read <code>x-amz-object-lock-legal-hold-status</code>, the name of no AWS header, so the <code>x-amz-object-lock-legal-hold: ON</code> that SDKs send (<code>ObjectLockLegalHoldStatus</code> in boto3) was ignored and the object was stored without the hold. GetObject and HeadObject now also return the hold as <code>x-amz-object-lock-legal-hold</code>, so SDKs see it; the old name is still accepted on PutObject.</li>
 </ul>
 <h2 id="0341-2026-10-30"><a href="https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.1">0.34.1</a> — 2026-10-30<a class="headerlink" href="#0341-2026-10-30" title="Permanent link">&para;</a></h2>
 <p>v0.34.0 was tagged but never published: the scans of its release run found the advisories under Security, so no image, binary or GitHub release exists for it. 0.34.1 is the first release with the changes below.</p>

@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **A subresource Arca does not implement is answered `501`** instead of falling through to the plain operation: `DELETE /<bucket>?cors` deleted the bucket when it was empty, `PUT /<bucket>/<key>?acl` overwrote the object with the ACL document and `GET ?acl` returned the object's content.
+- **A legal hold set on PutObject is applied.** PutObject read `x-amz-object-lock-legal-hold-status`, the name of no AWS header, so the `x-amz-object-lock-legal-hold: ON` that SDKs send (`ObjectLockLegalHoldStatus` in boto3) was ignored and the object was stored without the hold. GetObject and HeadObject now also return the hold as `x-amz-object-lock-legal-hold`, so SDKs see it; the old name is still accepted on PutObject.
 
 ## [0.34.1] — 2026-10-30
 

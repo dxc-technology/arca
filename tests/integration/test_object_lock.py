@@ -268,6 +268,25 @@ class TestLegalHold:
         finally:
             cleanup_bucket(s3_client, bucket)
 
+    def test_put_object_with_legal_hold_header(self, s3_client):
+        """`ObjectLockLegalHoldStatus` on PutObject (`x-amz-object-lock-legal-hold`,
+        the AWS request header) puts the new object under legal hold."""
+        bucket = make_bucket(s3_client)
+        try:
+            s3_client.put_object_lock_configuration(
+                Bucket=bucket,
+                ObjectLockConfiguration={"ObjectLockEnabled": "Enabled"},
+            )
+            s3_client.put_object(
+                Bucket=bucket, Key="hold.txt", Body=b"data", ObjectLockLegalHoldStatus="ON"
+            )
+            resp = s3_client.get_object_legal_hold(Bucket=bucket, Key="hold.txt")
+            assert resp["LegalHold"]["Status"] == "ON"
+            head = s3_client.head_object(Bucket=bucket, Key="hold.txt")
+            assert head["ObjectLockLegalHoldStatus"] == "ON"
+        finally:
+            cleanup_bucket(s3_client, bucket)
+
     def test_toggle_legal_hold_off(self, s3_client):
         """Toggle legal hold OFF."""
         bucket = make_bucket(s3_client)

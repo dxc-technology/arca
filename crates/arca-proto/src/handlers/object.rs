@@ -993,7 +993,7 @@ pub(crate) fn authorize_write_headers(
         {
             needed.push(S3_PUT_OBJECT_RETENTION);
         }
-        // The AWS request header, and the one PutObject reads today.
+        // The AWS request header, and its response-header name (also read).
         if headers.contains_key("x-amz-object-lock-legal-hold")
             || headers.contains_key("x-amz-object-lock-legal-hold-status")
         {
@@ -2005,7 +2005,7 @@ pub async fn get_object(
         builder = builder.header("x-amz-object-lock-retain-until-date", until.to_rfc3339());
     }
     if record.legal_hold_status.as_deref() == Some("ON") {
-        builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
+        builder = builder.header("x-amz-object-lock-legal-hold", "ON");
     }
 
     // Checksum header: only return when client sends x-amz-checksum-mode: ENABLED
@@ -2217,7 +2217,7 @@ pub async fn head_object(
         builder = builder.header("x-amz-object-lock-retain-until-date", until.to_rfc3339());
     }
     if record.legal_hold_status.as_deref() == Some("ON") {
-        builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
+        builder = builder.header("x-amz-object-lock-legal-hold", "ON");
     }
 
     // Checksum header: only return when client sends x-amz-checksum-mode: ENABLED
@@ -2565,8 +2565,11 @@ async fn resolve_object_lock_headers(
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .ok()
         });
+    // `x-amz-object-lock-legal-hold` is the AWS request header (what SDKs
+    // send); `-status` is its response-header name, accepted as before.
     let header_hold = headers
-        .get("x-amz-object-lock-legal-hold-status")
+        .get("x-amz-object-lock-legal-hold")
+        .or_else(|| headers.get("x-amz-object-lock-legal-hold-status"))
         .and_then(|v| v.to_str().ok())
         .and_then(|s| if s == "ON" { Some("ON".to_string()) } else { None });
 

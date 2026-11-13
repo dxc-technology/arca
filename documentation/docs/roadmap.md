@@ -338,7 +338,7 @@ Write-Once-Read-Many compliance for regulatory and data protection requirements.
 - [x] Per-object retention: `PutObjectRetention` / `GetObjectRetention`. Mode + retain-until-date per version. COMPLIANCE can only be extended. GOVERNANCE requires bypass header to modify. Default retention applied on PutObject from bucket config
 - [x] Legal hold: `PutObjectLegalHold` / `GetObjectLegalHold`. Binary ON/OFF flag per object version. Requires Object Lock enabled on bucket
 - [x] Enforcement: locked objects cannot be hard-deleted (version-specific DELETE blocked). GOVERNANCE mode allows bypass with `x-amz-bypass-governance-retention: true` + `s3:BypassGovernanceRetention` permission. COMPLIANCE mode: no bypass until retention expires. Legal hold: blocks deletion when ON. Delete marker creation always allowed. Lifecycle worker respects locks
-- [x] Response headers: `x-amz-object-lock-mode`, `x-amz-object-lock-retain-until-date`, `x-amz-object-lock-legal-hold-status` on GET/HEAD
+- [x] Response headers: `x-amz-object-lock-mode`, `x-amz-object-lock-retain-until-date`, `x-amz-object-lock-legal-hold` on GET/HEAD
 - [x] Schema migration v12: `retention_mode`, `retain_until_date`, `legal_hold_status` columns on objects table
 - [x] 7 new S3 policy actions including `s3:BypassGovernanceRetention`
 - [x] (Console) Object Lock card in bucket settings: enable with mode/days, status indicator. Versioning suspend disabled when locked
