@@ -3,8 +3,12 @@
 FROM python:alpine AS stubs
 
 WORKDIR /stubs
-COPY arca_notifications.proto ./
-RUN pip install --no-cache-dir --only-binary=:all: grpcio-tools && \
+COPY arca_notifications.proto requirements.txt ./
+# grpcio-tools at the runtime's grpcio version (read from requirements.txt):
+# the generated *_pb2_grpc.py refuses to load under an older grpcio, so a
+# floating grpcio-tools breaks the receiver the day a newer one is released.
+RUN pip install --no-cache-dir --only-binary=:all: \
+        "grpcio-tools==$(sed -n 's/^grpcio==//p' requirements.txt)" && \
     python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. \
         arca_notifications.proto
 
