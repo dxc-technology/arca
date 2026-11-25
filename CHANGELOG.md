@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **OpenSSL CVE-2026-107496, -95691, -95692, -88822, -88823** in the console image. Its Alpine base ships `libssl3`/`libcrypto3` 3.5.9-r0; the console now requires `>= 3.5.9-r1`, and so do the two connector-test receivers. The console's `nginx`, installed from the Alpine repository at build time, comes out as 1.30.8-r0, past the nine nginx advisories fixed in 1.30.7-r0 (four critical, two high, among them HTTP/2 flaws) that the published 0.35.0 console image, on 1.30.6-r0, carries: upgrade the console. The receivers drop their `libuuid` constraint, which their base image now satisfies on its own.
+
 ### Fixed
 
 - **Deliberate 5xx answers are no longer logged as errors.** tower-http logged every 5xx at ERROR, without method or path, so a node re-entering a cluster logged an ERROR every 2 seconds for the load balancer's health checks, and every write refused without quorum was an ERROR too. Every 5xx is now logged once with its status, method, path, latency and request id, at a level chosen by its cause: ERROR for faults and for any 5xx not explicitly classified, WARN for a peer that did not acknowledge a write or failed behind `?node=`, DEBUG for deliberate refusals (syncing, draining, no write quorum, maintenance drain, `SlowDown`, `NotImplemented`). Their causes are logged by the server once per transition instead: write quorum lost and back (with the writes refused meanwhile), syncing, a peer unreachable and back, a seed not reached since startup, writes refused for lack of space, the maintenance drain. A state that lasts escalates to ERROR (after 1 minute without quorum, 5 minutes for an unreachable peer; a long first sync only warns) and repeats every 5 minutes, so an outage is never a single line.

@@ -35,7 +35,9 @@ LABEL org.opencontainers.image.title="Arca Console" \
 # Point constraints only, never a blanket `apk upgrade`, which would make the
 # build irreproducible:
 #   zlib >= 1.4-r0 -- zlib CVE-2026-4738 (the base image ships 1.3.2-r1).
-RUN apk add --no-cache nginx 'zlib>=1.4-r0' && \
+#   libssl3, libcrypto3 >= 3.5.9-r1 -- OpenSSL CVE-2026-107496, -95691, -95692,
+#     -88822, -88823 (the base image ships 3.5.9-r0).
+RUN apk add --no-cache nginx 'zlib>=1.4-r0' 'libssl3>=3.5.9-r1' 'libcrypto3>=3.5.9-r1' && \
     deluser nginx && \
     addgroup -g 10001 nginx && \
     adduser -D -H -h /var/lib/nginx -u 10001 -G nginx -s /sbin/nologin nginx && \

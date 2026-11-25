@@ -20,13 +20,13 @@ RUN pip install --no-cache-dir --only-binary=:all: \
 # msgpack/setuptools are perpetually behind their own advisories.
 FROM python:alpine
 
-# Point upgrade only, never a blanket `apk upgrade` (irreproducible builds).
-# CPython's _uuid extension links libuuid, and the base image still ships
-# 2.42.1-r0 -- CVE-2026-53612, -53613, -53614, -76642, -78408, -78409, -78410,
-# -27456. `>=` rather than `=` because Alpine drops superseded versions from
-# the repo index, turning an exact pin into a build failure later on.
+# Point upgrades only, never a blanket `apk upgrade` (irreproducible builds).
+# `>=` rather than `=` because Alpine drops superseded versions from the repo
+# index, turning an exact pin into a build failure later on.
 # zlib >= 1.4-r0 -- CVE-2026-4738 (the base image ships 1.3.2-r1).
-RUN apk add --no-cache 'libuuid>=2.42.3-r1' 'zlib>=1.4-r0'
+# libssl3, libcrypto3 >= 3.5.9-r1 -- OpenSSL CVE-2026-107496, -95691, -95692,
+#   -88822, -88823 (the base image ships 3.5.9-r0).
+RUN apk add --no-cache 'zlib>=1.4-r0' 'libssl3>=3.5.9-r1' 'libcrypto3>=3.5.9-r1'
 
 WORKDIR /app
 
