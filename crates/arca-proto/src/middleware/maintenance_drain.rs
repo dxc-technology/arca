@@ -16,7 +16,7 @@ use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use arca_core::{S3Error, S3ErrorCode};
+use arca_core::{FailureClass, S3Error, S3ErrorCode};
 
 use crate::state::AppState;
 use crate::xml::error_response::s3_error_response;
@@ -28,7 +28,11 @@ pub async fn maintenance_drain_middleware(
 ) -> Response {
     if *state.maintenance_draining.borrow() {
         let resource = request.uri().path().to_string();
-        return s3_error_response(S3Error::new(S3ErrorCode::ServiceUnavailable, &resource));
+        // The maintenance worker logs the drain's start and end.
+        return s3_error_response(
+            S3Error::new(S3ErrorCode::ServiceUnavailable, &resource)
+                .with_failure_class(FailureClass::Expected),
+        );
     }
     next.run(request).await
 }

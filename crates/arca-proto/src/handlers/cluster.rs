@@ -31,6 +31,7 @@ use arca_core::cluster::{
 };
 use arca_core::store::SidecarMeta;
 use arca_core::types::{BlobId, ObjectRecord};
+use arca_core::FailureClass;
 
 use crate::state::AppState;
 
@@ -128,7 +129,7 @@ pub async fn receive_blob(
 ) -> Response {
     let raw = match &state.cluster_raw_blob {
         Some(r) => r.clone(),
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+        None => return not_clustered(),
     };
     let blob_id = match parse_blob_id(&blob_id) {
         Ok(id) => id,
@@ -173,7 +174,7 @@ pub async fn receive_blob(
 pub async fn get_blob(State(state): State<AppState>, Path(blob_id): Path<String>) -> Response {
     let raw = match &state.cluster_raw_blob {
         Some(r) => r.clone(),
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+        None => return not_clustered(),
     };
     let blob_id = match parse_blob_id(&blob_id) {
         Ok(id) => id,
@@ -229,7 +230,7 @@ pub async fn get_blob(State(state): State<AppState>, Path(blob_id): Path<String>
 /// The origin counts full ACKs against the write quorum.
 pub async fn receive_object(State(state): State<AppState>, body: Bytes) -> Response {
     if state.cluster.is_none() {
-        return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+        return not_clustered();
     }
     let record: ObjectRecord = match serde_json::from_slice(&body) {
         Ok(r) => r,
@@ -272,7 +273,7 @@ pub async fn receive_object(State(state): State<AppState>, body: Bytes) -> Respo
 /// vacuously true (decision H2).
 pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) -> Response {
     if state.cluster.is_none() {
-        return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+        return not_clustered();
     }
     let req: ClusterVersionDelete = match serde_json::from_slice(&body) {
         Ok(r) => r,
@@ -303,7 +304,7 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
     // The inner control-plane handles are present together iff clustering is on.
     let inner = match &state.cluster_inner {
         Some(i) => i,
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+        None => return not_clustered(),
     };
     let (metadata, credentials, users, grants, teams, server_config) = (
         &inner.metadata,
@@ -421,7 +422,7 @@ const MANIFEST_MAX_LIMIT: u32 = 1000;
 /// batch is short, applying each row via `apply_remote_object`.
 pub async fn manifest(State(state): State<AppState>, body: Bytes) -> Response {
     if state.cluster.is_none() {
-        return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+        return not_clustered();
     }
     let req: ClusterManifestRequest = match serde_json::from_slice(&body) {
         Ok(r) => r,
@@ -457,7 +458,7 @@ pub async fn manifest(State(state): State<AppState>, body: Bytes) -> Response {
 pub async fn control_snapshot(State(state): State<AppState>) -> Response {
     let inner = match &state.cluster_inner {
         Some(i) => i,
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+        None => return not_clustered(),
     };
     match inner.control_snapshot.build_control_snapshot().await {
         Ok(snapshot) => Json(snapshot).into_response(),
@@ -479,7 +480,7 @@ macro_rules! admin_proxy_receiver {
         $(#[$doc])*
         pub async fn $name(State(state): State<AppState>, body: Bytes) -> Response {
             if state.cluster.is_none() {
-                return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+                return not_clustered();
             }
             let params: $params = match serde_json::from_slice(&body) {
                 Ok(p) => p,
@@ -551,6 +552,15 @@ fn decode_sidecar(headers: &HeaderMap) -> Result<SidecarMeta, Response> {
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid sidecar base64"))?;
     serde_json::from_slice(&json)
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid sidecar json"))
+}
+
+/// A peer called this node's inter-node API, but this node runs without
+/// `[cluster]`: a configuration error on one side, so the access log reports it
+/// at WARN ([`FailureClass::Notable`]), not as a server fault.
+fn not_clustered() -> Response {
+    let mut response = err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+    response.extensions_mut().insert(FailureClass::Notable);
+    response
 }
 
 /// Builds a JSON error response (cluster endpoints speak JSON, not S3 XML).

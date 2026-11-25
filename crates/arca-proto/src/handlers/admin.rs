@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use std::ffi::CString;
 
 use arca_core::types::Credential;
+use arca_core::FailureClass;
 
 use crate::handlers::admin_settings::effective_region;
 use crate::middleware::admin_auth::AuthenticatedCredential;
@@ -26,6 +27,8 @@ pub struct AdminError {
     status: StatusCode,
     error: &'static str,
     message: String,
+    /// How the access log reports this error when it is a 5xx.
+    failure_class: FailureClass,
 }
 
 impl AdminError {
@@ -34,6 +37,7 @@ impl AdminError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "InternalError",
             message: msg.into(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -42,6 +46,7 @@ impl AdminError {
             status: StatusCode::NOT_FOUND,
             error: "NotFound",
             message: msg.into(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -50,6 +55,7 @@ impl AdminError {
             status: StatusCode::FORBIDDEN,
             error: "AccessDenied",
             message: msg.into(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -58,6 +64,7 @@ impl AdminError {
             status: StatusCode::BAD_REQUEST,
             error: "BadRequest",
             message: msg.into(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -66,6 +73,7 @@ impl AdminError {
             status: StatusCode::CONFLICT,
             error: "Conflict",
             message: msg.into(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -76,6 +84,7 @@ impl AdminError {
             status: StatusCode::SERVICE_UNAVAILABLE,
             error: "ServiceUnavailable",
             message: msg.into(),
+            failure_class: FailureClass::Notable,
         }
     }
 
@@ -85,6 +94,7 @@ impl AdminError {
             status: StatusCode::BAD_GATEWAY,
             error: "BadGateway",
             message: msg.into(),
+            failure_class: FailureClass::Notable,
         }
     }
 
@@ -95,6 +105,7 @@ impl AdminError {
             status,
             error: "PeerError",
             message: msg.into(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -107,6 +118,13 @@ impl AdminError {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    /// Marks this error as a deliberate answer caused by a cluster state whose
+    /// owner logs its transitions (see [`FailureClass::Expected`]).
+    pub fn expected(mut self) -> Self {
+        self.failure_class = FailureClass::Expected;
+        self
+    }
 }
 
 impl IntoResponse for AdminError {
@@ -115,7 +133,9 @@ impl IntoResponse for AdminError {
             "error": self.error,
             "message": self.message,
         });
-        (self.status, Json(body)).into_response()
+        let mut response = (self.status, Json(body)).into_response();
+        response.extensions_mut().insert(self.failure_class);
+        response
     }
 }
 
@@ -245,6 +265,13 @@ pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>)
             // Retry-After like every retriable cluster 503 (see s3_error_response).
             .header("Retry-After", "5")
             .body(Body::from(format!(r#"{{"status":"{status}"}}"#)))
+            .map(|mut response| {
+                // Draining or syncing: the shutdown/maintenance drain and the
+                // cluster state logger report these states, and the load
+                // balancer polls this every few seconds.
+                response.extensions_mut().insert(FailureClass::Expected);
+                response
+            })
             .expect("build not-ready response");
     }
     Json(HealthResponse { status: "ok" }).into_response()
@@ -995,7 +1022,21 @@ pub async fn presign(
 
 #[cfg(test)]
 mod tests {
-    use super::plain_health_status;
+    use super::{plain_health_status, AdminError};
+    use arca_core::FailureClass;
+    use axum::response::IntoResponse;
+
+    /// Admin errors carry the class the access-failure logger reads: a 500 is
+    /// a fault, a 503/502 about a peer or a missing store is worth a warning,
+    /// and `expected()` marks a state the cluster state logger reports.
+    #[test]
+    fn admin_errors_carry_their_failure_class() {
+        let class = |e: AdminError| e.into_response().extensions().get::<FailureClass>().copied();
+        assert_eq!(class(AdminError::internal("x")), Some(FailureClass::Unexpected));
+        assert_eq!(class(AdminError::unavailable("x")), Some(FailureClass::Notable));
+        assert_eq!(class(AdminError::bad_gateway("x")), Some(FailureClass::Notable));
+        assert_eq!(class(AdminError::unavailable("x").expected()), Some(FailureClass::Expected));
+    }
 
     /// Default LB shape: ready unless draining or syncing (writable = true
     /// when the write-aware variant was not requested).

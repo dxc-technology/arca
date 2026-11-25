@@ -45,6 +45,28 @@ ARCA_LOG=info,arca_auth=debug
 ARCA_LOG=info,arca_storage=trace
 ```
 
+### Server errors (5xx) and their levels
+
+A 5xx is not always a fault. A node that is syncing after a restart, a cluster without write quorum, a maintenance drain or a client over its rate limit all answer 5xx on purpose. Arca logs every 5xx response with its status, method, path (never the query string, which can carry a presigned signature), latency and request id, at the level its cause deserves:
+
+| Level | When | Examples |
+|-------|------|----------|
+| `ERROR` | An unexpected failure, and any 5xx not explicitly classified | `500 InternalError` |
+| `WARN` | Not a server fault, but worth a look | a cluster peer that did not acknowledge a write (503), a peer failing behind `?node=` (502), a peer calling the inter-node API of a node that runs without `[cluster]` |
+| `DEBUG` | A deliberate answer whose cause is logged on its own (below) or by design | `/admin/health` 503 while syncing or draining, writes refused without quorum, the maintenance drain, `SlowDown`, `NotImplemented` |
+
+The causes of the deliberate refusals are logged once per transition by the server, so the per-request lines can stay at `DEBUG`, off in production, without losing what happened. In a cluster:
+
+| State | Start | While it lasts | End |
+|-------|-------|----------------|-----|
+| No write quorum | `WARN` (`INFO` at startup, while the peers are coming up) | `ERROR` after 1 minute, repeated every 5, with the writes refused so far and the missing peers | `INFO`, with the writes refused meanwhile |
+| Syncing (first anti-entropy pass) | `INFO` | `WARN` after 5 minutes, repeated every 5 | `INFO` |
+| A known peer unreachable | `WARN` | `ERROR` after 5 minutes, repeated every 5 | `INFO` |
+| A seed not reached since startup | `INFO` | `ERROR` after 5 minutes, repeated every 5 | `INFO` when reached |
+| Writes refused for lack of space (507) | `ERROR` | `ERROR` at most every 5 minutes, with the count | |
+
+The maintenance drain logs `INFO` when it starts and ends, and the shutdown drain when it starts. A normal restart of a node therefore logs `INFO` lines only: an `ERROR` means a state that lasted too long or a real failure.
+
 ## Health Checks
 
 ### Endpoint

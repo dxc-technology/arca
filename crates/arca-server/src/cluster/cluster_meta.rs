@@ -64,7 +64,7 @@ use arca_core::store::{
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
-use arca_core::{S3Error, S3ErrorCode};
+use arca_core::{FailureClass, S3Error, S3ErrorCode};
 
 use super::cluster_control::{clear_tombstone, record_tombstone};
 use chrono::{DateTime, Utc};
@@ -78,17 +78,27 @@ use crate::cluster::client::ClusterClient;
 /// authoritative); [`WriteGate::SizeExceeded`] is the fail-closed
 /// cluster-size guard (decision H6) against an over-sized membership — two
 /// distinct, actionable messages.
+///
+/// Both refusals are [`FailureClass::Expected`]: the cluster state logger
+/// reports the episode (with the count of refused writes), so the access log
+/// keeps each refused request at DEBUG.
 pub(crate) fn check_write_gate(cluster: &ClusterState) -> Result<(), ArcaError> {
     match cluster.write_gate() {
         WriteGate::Open => Ok(()),
-        WriteGate::NoQuorum { eligible, quorum } => Err(ArcaError::S3(S3Error::with_message(
-            S3ErrorCode::ServiceUnavailable,
-            format!(
-                "cluster write quorum not available ({eligible} eligible node(s), \
-                 {quorum} required)"
-            ),
-            "/",
-        ))),
+        WriteGate::NoQuorum { eligible, quorum } => {
+            cluster.record_write_refused_no_quorum();
+            Err(ArcaError::S3(
+                S3Error::with_message(
+                    S3ErrorCode::ServiceUnavailable,
+                    format!(
+                        "cluster write quorum not available ({eligible} eligible node(s), \
+                         {quorum} required)"
+                    ),
+                    "/",
+                )
+                .with_failure_class(FailureClass::Expected),
+            ))
+        }
         WriteGate::SizeExceeded {
             eligible,
             cluster_size,
@@ -100,7 +110,8 @@ pub(crate) fn check_write_gate(cluster: &ClusterState) -> Result<(), ArcaError> 
                  extra node(s) or resize the cluster (see the HA guide runbook)"
             ),
             "/",
-        ))),
+        )
+        .with_failure_class(FailureClass::Expected))),
     }
 }
 
@@ -171,7 +182,10 @@ impl ClusterMetadataStore {
                     self.cluster.write_quorum().unwrap_or(1),
                 ),
                 "/",
-            )))
+            )
+            // The gate was open, yet a peer did not acknowledge: either it
+            // died since the last probe (transient) or it answers errors.
+            .with_failure_class(FailureClass::Notable)))
         }
     }
 

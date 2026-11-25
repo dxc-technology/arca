@@ -1159,6 +1159,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#server-errors-5xx-and-their-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Server errors (5xx) and their levels
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1516,6 +1527,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#server-errors-5xx-and-their-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Server errors (5xx) and their levels
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1670,6 +1692,78 @@
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Trace storage operations</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nv">ARCA_LOG</span><span class="o">=</span>info,arca_storage<span class="o">=</span>trace
 </code></pre></div>
+<h3 id="server-errors-5xx-and-their-levels">Server errors (5xx) and their levels<a class="headerlink" href="#server-errors-5xx-and-their-levels" title="Permanent link">&para;</a></h3>
+<p>A 5xx is not always a fault. A node that is syncing after a restart, a cluster without write quorum, a maintenance drain or a client over its rate limit all answer 5xx on purpose. Arca logs every 5xx response with its status, method, path (never the query string, which can carry a presigned signature), latency and request id, at the level its cause deserves:</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>When</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ERROR</code></td>
+<td>An unexpected failure, and any 5xx not explicitly classified</td>
+<td><code>500 InternalError</code></td>
+</tr>
+<tr>
+<td><code>WARN</code></td>
+<td>Not a server fault, but worth a look</td>
+<td>a cluster peer that did not acknowledge a write (503), a peer failing behind <code>?node=</code> (502), a peer calling the inter-node API of a node that runs without <code>[cluster]</code></td>
+</tr>
+<tr>
+<td><code>DEBUG</code></td>
+<td>A deliberate answer whose cause is logged on its own (below) or by design</td>
+<td><code>/admin/health</code> 503 while syncing or draining, writes refused without quorum, the maintenance drain, <code>SlowDown</code>, <code>NotImplemented</code></td>
+</tr>
+</tbody>
+</table>
+<p>The causes of the deliberate refusals are logged once per transition by the server, so the per-request lines can stay at <code>DEBUG</code>, off in production, without losing what happened. In a cluster:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Start</th>
+<th>While it lasts</th>
+<th>End</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No write quorum</td>
+<td><code>WARN</code> (<code>INFO</code> at startup, while the peers are coming up)</td>
+<td><code>ERROR</code> after 1 minute, repeated every 5, with the writes refused so far and the missing peers</td>
+<td><code>INFO</code>, with the writes refused meanwhile</td>
+</tr>
+<tr>
+<td>Syncing (first anti-entropy pass)</td>
+<td><code>INFO</code></td>
+<td><code>WARN</code> after 5 minutes, repeated every 5</td>
+<td><code>INFO</code></td>
+</tr>
+<tr>
+<td>A known peer unreachable</td>
+<td><code>WARN</code></td>
+<td><code>ERROR</code> after 5 minutes, repeated every 5</td>
+<td><code>INFO</code></td>
+</tr>
+<tr>
+<td>A seed not reached since startup</td>
+<td><code>INFO</code></td>
+<td><code>ERROR</code> after 5 minutes, repeated every 5</td>
+<td><code>INFO</code> when reached</td>
+</tr>
+<tr>
+<td>Writes refused for lack of space (507)</td>
+<td><code>ERROR</code></td>
+<td><code>ERROR</code> at most every 5 minutes, with the count</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The maintenance drain logs <code>INFO</code> when it starts and ends, and the shutdown drain when it starts. A normal restart of a node therefore logs <code>INFO</code> lines only: an <code>ERROR</code> means a state that lasted too long or a real failure.</p>
 <h2 id="health-checks">Health Checks<a class="headerlink" href="#health-checks" title="Permanent link">&para;</a></h2>
 <h3 id="endpoint">Endpoint<a class="headerlink" href="#endpoint" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>GET /admin/health

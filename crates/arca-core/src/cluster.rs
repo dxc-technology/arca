@@ -13,7 +13,7 @@
 //! `arca-core` (which `arca-proto` and `arca-server` both depend on) rather
 //! than in `arca-server` (which `arca-proto` cannot see).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
@@ -1533,6 +1533,14 @@ pub struct ClusterState {
     /// skipping tombstone GC because a known peer is unseen beyond the grace
     /// window.
     tombstone_gc_blocked: AtomicBool,
+    /// Writes refused by the write gate for lack of quorum since startup. The
+    /// cluster state logger reports how many a no-quorum episode refused, so
+    /// the per-request refusals can stay at DEBUG.
+    writes_refused_no_quorum: AtomicU64,
+    /// Writes refused with 507 (a node lacks the space) since startup, and the
+    /// last refusal's (needed, min available) bytes, for the same logger.
+    writes_refused_no_space: AtomicU64,
+    last_space_refusal: RwLock<Option<(u64, u64)>>,
     /// Per-peer pull-sync status (keyed by peer `node_id`) behind the syncing
     /// readiness gate, cursor rewind detection and the stuck-entry skip,
     /// written by the anti-entropy worker and read by the health/admin
@@ -1560,6 +1568,9 @@ impl ClusterState {
             config_fingerprint: RwLock::new(None),
             config_fingerprint_v2: RwLock::new(None),
             tombstone_gc_blocked: AtomicBool::new(false),
+            writes_refused_no_quorum: AtomicU64::new(0),
+            writes_refused_no_space: AtomicU64::new(0),
+            last_space_refusal: RwLock::new(None),
             sync: RwLock::new(std::collections::HashMap::new()),
         }
     }
@@ -1860,6 +1871,36 @@ impl ClusterState {
     /// Whether tombstone GC is currently blocked by the liveness guard.
     pub fn tombstone_gc_blocked(&self) -> bool {
         self.tombstone_gc_blocked.load(Ordering::Relaxed)
+    }
+
+    /// Counts a write refused by the write gate for lack of quorum.
+    pub fn record_write_refused_no_quorum(&self) {
+        self.writes_refused_no_quorum.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Writes refused for lack of quorum since startup.
+    pub fn writes_refused_no_quorum(&self) -> u64 {
+        self.writes_refused_no_quorum.load(Ordering::Relaxed)
+    }
+
+    /// Counts a write refused with 507: `needed` bytes against the cluster's
+    /// `min_available`.
+    pub fn record_write_refused_no_space(&self, needed: u64, min_available: u64) {
+        *self
+            .last_space_refusal
+            .write()
+            .expect("cluster last_space_refusal lock poisoned") = Some((needed, min_available));
+        self.writes_refused_no_space.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Writes refused with 507 since startup, and the last one's
+    /// `(needed, min_available)` bytes.
+    pub fn writes_refused_no_space(&self) -> (u64, Option<(u64, u64)>) {
+        let last = *self
+            .last_space_refusal
+            .read()
+            .expect("cluster last_space_refusal lock poisoned");
+        (self.writes_refused_no_space.load(Ordering::Relaxed), last)
     }
 
     /// A serializable snapshot for the admin API / console dashboard.

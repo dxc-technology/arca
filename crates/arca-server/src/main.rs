@@ -176,10 +176,15 @@ async fn async_main(cli: Cli) -> Result<()> {
                 let advertise_port = c.advertise_port.unwrap_or(config.server.port);
                 cluster::membership::spawn(
                     c,
-                    cstate,
+                    cstate.clone(),
                     scheme,
                     advertise_port,
                     cluster_tls_material.clone(),
+                );
+                // Same cadence as the membership probes, which drive the state.
+                cluster::state_log::spawn(
+                    cstate.clone(),
+                    std::time::Duration::from_secs(c.health_interval_seconds.max(1)),
                 );
             }
 

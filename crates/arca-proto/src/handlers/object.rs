@@ -16,7 +16,7 @@ use arca_core::store::{
     BlobEncryptionInfo, ByteRange, DeletePrecondition, SidecarMeta, WritePrecondition,
 };
 use arca_core::types::{BlobId, ObjectRecord};
-use arca_core::{S3Error, S3ErrorCode};
+use arca_core::{FailureClass, S3Error, S3ErrorCode};
 
 use super::sidecar::{part_sidecar, write_sidecar_or_discard};
 use super::ssec::{extract_ssec_copy_source_key, extract_ssec_key};
@@ -501,11 +501,17 @@ fn check_cluster_space(state: &AppState, needed: u64, resource: &str) -> Result<
     let (_min_total, min_available) = cluster.min_disk(local_total, local_available);
     if let Some(avail) = min_available {
         if avail < needed {
-            return Err(s3_error_response(S3Error::with_message(
-                S3ErrorCode::InsufficientStorage,
-                "a node in the cluster lacks the disk space to store this object",
-                resource,
-            )));
+            // The cluster state logger reports these refusals at ERROR
+            // (rate-limited, with a count): space needs an operator.
+            cluster.record_write_refused_no_space(needed, avail);
+            return Err(s3_error_response(
+                S3Error::with_message(
+                    S3ErrorCode::InsufficientStorage,
+                    "a node in the cluster lacks the disk space to store this object",
+                    resource,
+                )
+                .with_failure_class(FailureClass::Expected),
+            ));
         }
     }
     Ok(())

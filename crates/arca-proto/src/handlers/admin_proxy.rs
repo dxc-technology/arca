@@ -138,9 +138,12 @@ impl NodeSelectError {
             Self::Unknown(id) => {
                 AdminError::not_found(format!("unknown cluster node '{id}'"))
             }
+            // Dead, unauthenticated or drifted: states the membership manager
+            // and the cluster state logger report on their transitions.
             Self::Ineligible(id) => AdminError::unavailable(format!(
                 "cluster node '{id}' is not currently eligible (dead, unauthenticated, or config-drifted)"
-            )),
+            ))
+            .expected(),
         }
     }
 }

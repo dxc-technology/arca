@@ -7,7 +7,8 @@ use axum::Router;
 use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use http::{HeaderName, Method};
 use tower_http::cors::{AllowHeaders, CorsLayer};
-use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
+use tower_http::classify::ServerErrorsFailureClass;
+use tower_http::trace::{DefaultMakeSpan, OnFailure, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
 use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, cluster, maintenance, object};
@@ -18,10 +19,10 @@ use crate::state::AppState;
 ///
 /// Layer order for S3 requests (outermost → innermost, i.e. request flows
 /// top-down):
-///   RequestId → Validate → IP RateLimit → Audit → Trace → CORS →
+///   FailureLog → RequestId → Validate → IP RateLimit → Audit → Trace → CORS →
 ///   MaintenanceDrain → Auth → Credential RateLimit → [VirtualHost] → handlers
 ///
-/// The first six wrap every route (see the end of this function); the rest
+/// The first seven wrap every route (see the end of this function); the rest
 /// apply to the S3 router only.
 ///
 /// Admin routes live under `/admin/*` with their own auth middleware
@@ -352,7 +353,7 @@ pub fn build_router(state: AppState) -> Router {
     // --- Merge everything ---
     // Admin routes are nested under /admin, S3 routes at root.
     // Layer order (outermost → innermost):
-    //   RequestId → Validate → IP RateLimit → Audit → Trace → CORS → then the
+    //   FailureLog → RequestId → Validate → IP RateLimit → Audit → Trace → CORS → then the
     //   per-router layers (S3: MaintenanceDrain → Auth → Credential RateLimit
     //   → [VirtualHost]; admin and cluster: their own auth) → Handlers
     Router::new()
@@ -364,7 +365,8 @@ pub fn build_router(state: AppState) -> Router {
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::DEBUG))
                 .on_request(RequestLogger)
-                .on_response(ResponseLogger),
+                .on_response(ResponseLogger)
+                .on_failure(BodyFailureLogger),
         )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -381,6 +383,11 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn(
             middleware::request_id::request_id_middleware,
         ))
+        // Outermost: it sees every response (also the 503 SlowDown of the IP
+        // rate limit) with its x-amz-request-id header already set.
+        .layer(axum::middleware::from_fn(
+            middleware::failure_log::failure_log_middleware,
+        ))
         .with_state(state)
 }
 
@@ -394,6 +401,26 @@ impl<B> OnRequest<B> for RequestLogger {
             uri = %request.uri(),
             "request",
         );
+    }
+}
+
+/// Logs a response body that failed while streaming. A 5xx status is not
+/// logged here: `failure_log_middleware` logs it with its method, path and the
+/// level its [`arca_core::FailureClass`] deserves (tower-http's default logged
+/// every 5xx at ERROR, deliberate refusals included, without the path).
+#[derive(Clone)]
+struct BodyFailureLogger;
+
+impl OnFailure<ServerErrorsFailureClass> for BodyFailureLogger {
+    fn on_failure(
+        &mut self,
+        failure: ServerErrorsFailureClass,
+        latency: Duration,
+        _span: &tracing::Span,
+    ) {
+        if let ServerErrorsFailureClass::Error(error) = failure {
+            tracing::error!(error, latency_ms = latency.as_millis(), "response body failed");
+        }
     }
 }
 

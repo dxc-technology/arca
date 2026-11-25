@@ -105,6 +105,13 @@ pub fn spawn_maintenance_worker(
 
 fn set_drain(drain_tx: &watch::Sender<bool>, want: bool) {
     if *drain_tx.borrow() != want {
+        // Logged on each transition: while drained, the S3 API answers 503 and
+        // the access log keeps those refusals at DEBUG.
+        if want {
+            tracing::info!("maintenance drain on: S3 requests are refused with 503 while the job runs");
+        } else {
+            tracing::info!("maintenance drain off: S3 requests are served again");
+        }
         let _ = drain_tx.send(want);
     }
 }

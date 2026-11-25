@@ -29,6 +29,7 @@ pub mod admin_auth;
 pub mod audit;
 pub mod auth;
 pub mod cluster_auth;
+pub mod failure_log;
 pub mod identity;
 pub mod maintenance_drain;
 pub mod normalize;

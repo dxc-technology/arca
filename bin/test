@@ -959,9 +959,25 @@ run_cluster() {
 
     if [[ $rc -eq 0 ]]; then
         echo "── Phase D: all nodes back up (anti-entropy convergence) ──"
+        local reentry_since
+        reentry_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         $C start arca-2 arca-3
         wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_catchup_verify -v "$@" || rc=$?; }
+        # A normal re-entry is a transition, not a fault: the returning nodes
+        # answer 503 "syncing" to the load balancer on purpose, and none of it
+        # may be logged as an error.
+        if [[ $rc -eq 0 ]]; then
+            local reentry_errors
+            reentry_errors="$($C logs --no-color --since "$reentry_since" arca-2 arca-3 2>&1 | grep -w ERROR || true)"
+            if [[ -n "$reentry_errors" ]]; then
+                echo "FAIL: ERROR lines logged by nodes during a normal re-entry:" >&2
+                echo "$reentry_errors" >&2
+                rc=1
+            else
+                echo "    OK: no ERROR line logged during the re-entry of arca-2 and arca-3."
+            fi
+        fi
     fi
 
     # Fresh volumes for the special-topology phases.

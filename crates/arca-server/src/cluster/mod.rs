@@ -15,6 +15,8 @@
 //!   replicate blobs and object rows to peers under the consistency policy.
 //! - [`cluster_control`] — control-plane (identity) replication decorators.
 //! - [`anti_entropy`] — the periodic reconcile / self-heal worker.
+//! - [`state_log`] — logs the transitions of the states that make a node
+//!   answer 5xx on purpose (no quorum, syncing, peers down, no space).
 
 pub mod anti_entropy;
 pub mod client;
@@ -23,4 +25,5 @@ pub mod cluster_control;
 pub mod cluster_meta;
 pub mod identity;
 pub mod membership;
+pub mod state_log;
 pub mod status;

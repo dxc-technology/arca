@@ -13,7 +13,7 @@ use governor::clock::DefaultClock;
 use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
 
-use arca_core::{S3Error, S3ErrorCode};
+use arca_core::{FailureClass, S3Error, S3ErrorCode};
 
 use crate::middleware::identity::AuthenticatedIdentity;
 use crate::state::AppState;
@@ -98,7 +98,8 @@ fn extract_client_ip(request: &axum::extract::Request) -> String {
 
 /// Returns a 503 SlowDown S3 error response.
 fn slow_down_response(resource: &str) -> Response {
-    let err = S3Error::new(S3ErrorCode::SlowDown, resource);
+    // By design (the client exceeded its configured rate): not a fault.
+    let err = S3Error::new(S3ErrorCode::SlowDown, resource).with_failure_class(FailureClass::Expected);
     let mut resp = s3_error_response(err);
     resp.headers_mut().insert(
         "Retry-After",

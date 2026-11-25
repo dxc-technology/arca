@@ -274,6 +274,24 @@ impl std::fmt::Display for S3ErrorCode {
     }
 }
 
+/// How the access log reports a 5xx response. The code that produces a
+/// deliberate refusal says so; every other 5xx keeps the default and is
+/// logged as an error, so a missing classification can only add noise, never
+/// hide a fault.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FailureClass {
+    /// A fault: logged at ERROR.
+    #[default]
+    Unexpected,
+    /// Not a server fault, but worth an operator's attention (a peer that did
+    /// not acknowledge a write, a misconfigured caller): logged at WARN.
+    Notable,
+    /// A deliberate answer: a refusal caused by a state whose owner logs its
+    /// own transitions (syncing, no write quorum, drain), or a by-design answer
+    /// (501, rate limiting): logged at DEBUG.
+    Expected,
+}
+
 /// A complete S3 error response, serializable to XML.
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("S3 error {code}: {message}")]
@@ -282,6 +300,8 @@ pub struct S3Error {
     pub message: String,
     pub resource: String,
     pub request_id: String,
+    /// How the access log reports this error when it is a 5xx.
+    pub failure_class: FailureClass,
 }
 
 impl S3Error {
@@ -292,6 +312,7 @@ impl S3Error {
             code,
             resource: resource.into(),
             request_id: uuid::Uuid::new_v4().to_string(),
+            failure_class: FailureClass::Unexpected,
         }
     }
 
@@ -306,7 +327,14 @@ impl S3Error {
             message: message.into(),
             resource: resource.into(),
             request_id: uuid::Uuid::new_v4().to_string(),
+            failure_class: FailureClass::Unexpected,
         }
+    }
+
+    /// Sets how the access log reports this error (see [`FailureClass`]).
+    pub fn with_failure_class(mut self, class: FailureClass) -> Self {
+        self.failure_class = class;
+        self
     }
 
     /// Returns the HTTP status code for this error.
@@ -365,6 +393,7 @@ mod tests {
             message: "Not implemented".to_string(),
             resource: "/".to_string(),
             request_id: "test-request-id".to_string(),
+            failure_class: FailureClass::Expected,
         };
 
         let xml = err.to_xml();

@@ -3,7 +3,7 @@
 use axum::response::Response;
 use http::StatusCode;
 
-use arca_core::{ArcaError, S3Error, S3ErrorCode};
+use arca_core::{ArcaError, FailureClass, S3Error, S3ErrorCode};
 
 /// Marker extension placed on error responses so the request_id middleware
 /// can replace the placeholder `<RequestId>` in the XML body with the real
@@ -19,6 +19,7 @@ pub fn s3_error_response(err: S3Error) -> Response {
     let status =
         StatusCode::from_u16(err.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let placeholder_id = err.request_id.clone();
+    let failure_class = err.failure_class;
     let body = err.to_xml();
 
     let mut builder = Response::builder()
@@ -37,12 +38,16 @@ pub fn s3_error_response(err: S3Error) -> Response {
     response
         .extensions_mut()
         .insert(ErrorRequestId(placeholder_id));
+    // Read by the access-failure logger to pick the level of a 5xx.
+    response.extensions_mut().insert(failure_class);
     response
 }
 
 /// Returns a 501 NotImplemented S3 XML error response.
 pub fn not_implemented_response(resource: &str) -> Response {
-    let err = S3Error::new(S3ErrorCode::NotImplemented, resource);
+    // A permanent by-design answer (TD-007), not a fault.
+    let err = S3Error::new(S3ErrorCode::NotImplemented, resource)
+        .with_failure_class(FailureClass::Expected);
     s3_error_response(err)
 }
 
@@ -82,6 +87,25 @@ mod tests {
             resp.headers().get("Retry-After").and_then(|v| v.to_str().ok()),
             Some("5")
         );
+    }
+
+    /// The failure class travels to the access-failure logger as a response
+    /// extension: unmarked errors stay `Unexpected` (logged at ERROR), and the
+    /// deliberate ones keep the class their producer set.
+    #[test]
+    fn failure_class_is_attached_to_the_response() {
+        let class = |resp: &Response| resp.extensions().get::<FailureClass>().copied();
+
+        let internal = internal_error_response(ArcaError::Internal("boom".into()), "/r");
+        assert_eq!(class(&internal), Some(FailureClass::Unexpected));
+
+        let refused = s3_error_response(
+            S3Error::new(S3ErrorCode::ServiceUnavailable, "/r")
+                .with_failure_class(FailureClass::Expected),
+        );
+        assert_eq!(class(&refused), Some(FailureClass::Expected));
+
+        assert_eq!(class(&not_implemented_response("/r")), Some(FailureClass::Expected));
     }
 
     /// Non-retriable errors must NOT advertise a retry.
