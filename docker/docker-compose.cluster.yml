@@ -81,9 +81,9 @@ services:
 
   # Load balancer: single entry point on :9000, round-robin over live nodes.
   # Cluster network only: during a partition it loses the isolated node, like
-  # a real LB would. HAProxy resolves backend names once at startup, so a
-  # healed node that re-attached with a new IP may stay out of rotation; the
-  # partition test phases are self-contained (fresh up/down) to absorb this.
+  # a real LB would. HAProxy re-resolves the node names through Docker's DNS
+  # (haproxy.cfg `resolvers docker`), so a node that restarts or re-attaches
+  # after a heal with a new IP comes back into rotation.
   arca-lb:
     image: haproxy
     volumes:

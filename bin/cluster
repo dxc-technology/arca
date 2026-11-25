@@ -189,8 +189,8 @@ cmd_heal() {
     # Re-attach WITH the cluster-only alias: a manual `network connect` does not
     # restore the aliases compose assigned at `up`, and the seed list relies on
     # them. The node may come back with a different IP — peers re-resolve the
-    # alias per probe, but HAProxy (startup-resolved) and the published host
-    # port may not recover until the node restarts.
+    # alias per probe and HAProxy re-resolves it through Docker's DNS, but
+    # the published host port may not recover until the node restarts.
     docker network connect --alias "arca-${n}-cluster" "${PROJECT}_cluster" "$(node_cid "$n")"
     echo "arca-${n} reconnected to the cluster network."
 }

@@ -1003,7 +1003,7 @@ run_cluster() {
     #    (same compose project) cut a node off the `cluster` network while its
     #    process stays alive; the `mgmt` network keeps the test runner connected
     #    to it. Self-contained phases (fresh up / down -v): after a heal the node
-    #    may re-attach with a new IP that HAProxy (startup-resolved) won't track.
+    #    may re-attach with a new IP, and its published host port may stay dark.
     #    wait_live polls node 1 only — a partitioned node's host port goes dark.
 
     if [[ $rc -eq 0 ]]; then

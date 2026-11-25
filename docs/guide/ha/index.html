@@ -2315,15 +2315,20 @@ them, and any node that takes a write replicates it to the others.</p>
 <h2 id="production-deployment">Production deployment<a class="headerlink" href="#production-deployment" title="Permanent link">&para;</a></h2>
 <h3 id="load-balancer">Load balancer<a class="headerlink" href="#load-balancer" title="Permanent link">&para;</a></h3>
 <p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up; 503 = draining or <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a> → out of rotation). The reference HAProxy backend (matching <code>deploy/haproxy/haproxy.cfg</code>; <code>fall 3 rise 2</code> rides out a transient blip without flapping the pool — the test/demo config under <code>docker/cluster/</code> uses a faster <code>fall 2 rise 1</code> instead):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>backend arca_nodes
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    balance roundrobin          # or `balance source` for sticky read-your-writes
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    option httpchk
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    http-check send meth GET uri /admin/health
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    http-check expect status 200
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    server arca-1 10.0.0.1:9000 check inter 2s fall 3 rise 2
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    server arca-2 10.0.0.2:9000 check inter 2s fall 3 rise 2
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    server arca-3 10.0.0.3:9000 check inter 2s fall 3 rise 2
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>defaults
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    retries 2
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    option redispatch 1         # retry a failed connection on another node
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>backend arca_nodes
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    balance roundrobin          # or `balance source` for sticky read-your-writes
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    option httpchk
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    http-check send meth GET uri /admin/health
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    http-check expect status 200
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    server arca-1 10.0.0.1:9000 check inter 2s fall 3 rise 2
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    server arca-2 10.0.0.2:9000 check inter 2s fall 3 rise 2
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    server arca-3 10.0.0.3:9000 check inter 2s fall 3 rise 2
 </code></pre></div>
+<p><strong>Retry a failed connection on another node.</strong> The health check needs a few seconds to evict a node that has just died, and in that window the balancer still routes requests to it. Without <code>option redispatch</code> HAProxy retries the connection on the same dead node and the client gets a <code>503</code> once the retries run out (15 to 20 seconds with common timeouts); with it the retry goes to a live node. Only connection failures are retried, so the request never reached Arca and the retry is safe for writes too. Both shipped HAProxy configs set it. The test/demo config also re-resolves the node names through Docker's DNS (<code>resolvers</code>), since a restarted container can come back with another IP.</p>
 <p><strong>A read-only node stays in rotation — and what that costs.</strong> A node that lost the write quorum still answers 200 on the default health check, <em>on purpose</em>: it can serve every read, and evicting it would throw that capacity away. The cost surfaces on the write path: while the cluster is degraded, a round-robin balancer keeps routing ~1/N of the writes to the read-only node, and each one fails with <code>503 ServiceUnavailable</code> (+ <code>Retry-After</code>) <strong>at the client</strong>. In practice the AWS SDKs mask this — they retry 5xx by default, and the retried request lands on a writable node — but a thin client without retries sees the failures. Two mitigations, choose per deployment:</p>
 <ul>
 <li><strong>SDK retries</strong> (default posture): nothing to configure; accept the retried-write latency during degradation.</li>

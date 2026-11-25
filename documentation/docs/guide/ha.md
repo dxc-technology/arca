@@ -243,6 +243,10 @@ The cluster does **not** refuse to start or auto-isolate the peer's process — 
 Put any L7/L4 balancer in front and health-check `GET /admin/health` (200 = up; 503 = draining or [syncing](#node-re-entry-the-syncing-readiness-gate) → out of rotation). The reference HAProxy backend (matching `deploy/haproxy/haproxy.cfg`; `fall 3 rise 2` rides out a transient blip without flapping the pool — the test/demo config under `docker/cluster/` uses a faster `fall 2 rise 1` instead):
 
 ```haproxy
+defaults
+    retries 2
+    option redispatch 1         # retry a failed connection on another node
+
 backend arca_nodes
     balance roundrobin          # or `balance source` for sticky read-your-writes
     option httpchk
@@ -252,6 +256,8 @@ backend arca_nodes
     server arca-2 10.0.0.2:9000 check inter 2s fall 3 rise 2
     server arca-3 10.0.0.3:9000 check inter 2s fall 3 rise 2
 ```
+
+**Retry a failed connection on another node.** The health check needs a few seconds to evict a node that has just died, and in that window the balancer still routes requests to it. Without `option redispatch` HAProxy retries the connection on the same dead node and the client gets a `503` once the retries run out (15 to 20 seconds with common timeouts); with it the retry goes to a live node. Only connection failures are retried, so the request never reached Arca and the retry is safe for writes too. Both shipped HAProxy configs set it. The test/demo config also re-resolves the node names through Docker's DNS (`resolvers`), since a restarted container can come back with another IP.
 
 **A read-only node stays in rotation — and what that costs.** A node that lost the write quorum still answers 200 on the default health check, *on purpose*: it can serve every read, and evicting it would throw that capacity away. The cost surfaces on the write path: while the cluster is degraded, a round-robin balancer keeps routing ~1/N of the writes to the read-only node, and each one fails with `503 ServiceUnavailable` (+ `Retry-After`) **at the client**. In practice the AWS SDKs mask this — they retry 5xx by default, and the retried request lands on a writable node — but a thin client without retries sees the failures. Two mitigations, choose per deployment:
 

@@ -50,8 +50,9 @@ The partition markers rely on the compose dual-network design: `bin/cluster
 partition <n>` cuts a node off the `cluster` network (inter-node traffic — the
 seeds use cluster-only aliases) while this runner keeps reaching every node by
 its plain service name over the never-partitioned `mgmt` network. After a heal
-the node may re-attach with a NEW IP: HAProxy resolves backends once at
-startup, so post-heal assertions always target the nodes directly, not the LB.
+the node may re-attach with a NEW IP: HAProxy re-resolves it through Docker's
+DNS, but only after its next resolution and health check, so post-heal
+assertions always target the nodes directly, not the LB.
 
 Cross-phase tests use DETERMINISTIC bucket/key names so a value written in one
 phase can be asserted in a later one (the cluster volumes persist across the
