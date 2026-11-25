@@ -20,6 +20,7 @@ def pytest_configure(config):
         ("cluster_full", "requires all 3 cluster nodes up"),
         ("cluster_two_thirds", "requires exactly 2 of 3 nodes up (quorum still met)"),
         ("cluster_one_third", "requires only 1 of 3 nodes up (no quorum)"),
+        ("cluster_restarted_alone", "requires node 1 restarted while nodes 2 and 3 are down"),
         ("cluster_catchup_verify", "verifies anti-entropy convergence after a node returns"),
         ("cluster_insufficient_storage", "requires the 507 overlay (one tiny-disk node)"),
         ("cluster_config_drift", "requires the drift overlay (one mismatched-secret node)"),

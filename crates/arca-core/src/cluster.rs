@@ -1489,6 +1489,14 @@ pub struct ClusterSnapshot {
     pub syncing: bool,
     /// All known peers (alive or not).
     pub peers: Vec<PeerNode>,
+    /// Configured expected cluster size (quorum mode; `None` in available
+    /// mode). The write quorum is derived from it, so it is the member count
+    /// to show even while some members have not answered since startup.
+    pub cluster_size: Option<u32>,
+    /// Discovery candidates (e.g. static seeds) that never answered since this
+    /// node started. Membership is in memory, so after a restart a member that
+    /// is still down is known only by its endpoint, without a `node_id`.
+    pub unreached_endpoints: Vec<String>,
 }
 
 /// Shared, mutable view of the cluster from this node's perspective.
@@ -1507,6 +1515,10 @@ pub struct ClusterState {
     cluster_size: Option<u32>,
     /// Currently known peers (excluding self).
     peers: RwLock<Vec<PeerNode>>,
+    /// Discovery candidates never reached since startup (see
+    /// [`ClusterSnapshot::unreached_endpoints`]). Display only: they count for
+    /// nothing (quorum, GC guard, replication) until they answer.
+    unreached_endpoints: RwLock<Vec<String>>,
     /// This node's own advertised endpoint, learned by the membership manager
     /// when a discovery candidate's health probe returns this node's own id.
     /// `None` until that first self-probe completes.
@@ -1543,6 +1555,7 @@ impl ClusterState {
             write_quorum,
             cluster_size,
             peers: RwLock::new(Vec::new()),
+            unreached_endpoints: RwLock::new(Vec::new()),
             local_endpoint: RwLock::new(None),
             config_fingerprint: RwLock::new(None),
             config_fingerprint_v2: RwLock::new(None),
@@ -1613,6 +1626,23 @@ impl ClusterState {
             .local_endpoint
             .write()
             .expect("cluster local_endpoint lock poisoned") = Some(endpoint.into());
+    }
+
+    /// Replaces the discovery candidates never reached since startup (called
+    /// by the membership manager next to [`Self::set_peers`]).
+    pub fn set_unreached_endpoints(&self, endpoints: Vec<String>) {
+        *self
+            .unreached_endpoints
+            .write()
+            .expect("cluster unreached_endpoints lock poisoned") = endpoints;
+    }
+
+    /// Discovery candidates never reached since startup.
+    pub fn unreached_endpoints(&self) -> Vec<String> {
+        self.unreached_endpoints
+            .read()
+            .expect("cluster unreached_endpoints lock poisoned")
+            .clone()
     }
 
     /// This node's own advertised endpoint, if learned yet.
@@ -1850,6 +1880,8 @@ impl ClusterState {
             worker_leader: self.is_worker_leader(),
             syncing: self.is_syncing(),
             peers,
+            cluster_size: self.cluster_size,
+            unreached_endpoints: self.unreached_endpoints(),
         }
     }
 }

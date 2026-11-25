@@ -190,6 +190,7 @@ pub fn spawn(
                         ps.last_contact = Some(now);
                         ps.node_id = None;
                         ps.last_live = None;
+                        ps.is_self = true;
                     }
                     ProbeOutcome::Contact(info) => {
                         let config_ok = contact_config_ok(&info, &my_fingerprint, &my_fingerprint_v2);
@@ -248,6 +249,7 @@ pub fn spawn(
             // 5) Build and publish the peer list.
             let peers: Vec<PeerNode> = known.values().filter_map(emit_peer).collect();
             state.set_peers(peers);
+            state.set_unreached_endpoints(unreached_endpoints(&known));
 
             // 6) Cluster-size guard (decision H6): shout on transitions (the
             // gate itself is enforced by ClusterState::write_gate in the store
@@ -294,6 +296,8 @@ struct ProbeState {
     /// verbatim during the failure-detector tolerance window (one tick of stale disk
     /// stats is far cheaper than flapping the quorum).
     last_live: Option<PeerNode>,
+    /// This endpoint answered with our own `node_id`: it is this node.
+    is_self: bool,
 }
 
 /// How (whether) a contacted peer authenticated itself to us.
@@ -446,6 +450,17 @@ fn contact_config_ok(
 /// tombstone-GC liveness guard and the admin
 /// view reason about how long it has been unseen) and dropping its disk stats
 /// (stale free space must not gate writes).
+/// Candidates that never answered since startup: no identity learned and not
+/// this node. Shown by the console as members not seen since the restart;
+/// they count for nothing else until they answer.
+fn unreached_endpoints(known: &BTreeMap<String, ProbeState>) -> Vec<String> {
+    known
+        .iter()
+        .filter(|(_, ps)| ps.node_id.is_none() && !ps.is_self)
+        .map(|(endpoint, _)| endpoint.clone())
+        .collect()
+}
+
 fn emit_peer(ps: &ProbeState) -> Option<PeerNode> {
     let node_id = ps.node_id.clone()?;
     if ps.consecutive_failures == 0 {
@@ -779,6 +794,25 @@ mod tests {
         // First success: alive again immediately.
         integrate_contact(&mut ps, contacted(AuthState::Proven), ts(200));
         assert!(emit_peer(&ps).unwrap().alive);
+    }
+
+    #[test]
+    fn unreached_lists_only_candidates_that_never_answered() {
+        let mut known: BTreeMap<String, ProbeState> = BTreeMap::new();
+        // Never answered (a member still down after this node's restart).
+        let mut down = ProbeState::default();
+        down.consecutive_failures = 3;
+        known.insert("http://arca-3:9000".into(), down);
+        // Answered once, then died: a known (dead) peer, not "unreached".
+        let mut dead = ProbeState::default();
+        integrate_contact(&mut dead, contacted(AuthState::Proven), ts(100));
+        dead.consecutive_failures = 2;
+        known.insert("http://arca-2:9000".into(), dead);
+        // This node's own seed entry.
+        let me = ProbeState { is_self: true, ..ProbeState::default() };
+        known.insert("http://arca-1:9000".into(), me);
+
+        assert_eq!(unreached_endpoints(&known), vec!["http://arca-3:9000".to_string()]);
     }
 
     #[test]

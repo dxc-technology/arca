@@ -347,6 +347,15 @@ struct ClusterAdminResponse {
     /// Total known nodes (including self).
     #[serde(skip_serializing_if = "Option::is_none")]
     node_count: Option<usize>,
+    /// Configured expected cluster size (quorum mode only): the member count,
+    /// also while some members have not answered since this node started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cluster_size: Option<u32>,
+    /// Discovery candidates (e.g. static seeds) that never answered since this
+    /// node started: members still down after a restart, known only by their
+    /// endpoint.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unreached_endpoints: Vec<String>,
     /// False when any live peer's cluster-critical config differs from ours.
     #[serde(skip_serializing_if = "Option::is_none")]
     config_aligned: Option<bool>,
@@ -402,6 +411,8 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
                 live_node_count: None,
                 eligible_node_count: None,
                 node_count: None,
+                cluster_size: None,
+                unreached_endpoints: Vec::new(),
                 config_aligned: None,
                 size_exceeded: None,
                 tombstone_gc_blocked: None,
@@ -474,6 +485,8 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         live_node_count: Some(snap.live_node_count),
         eligible_node_count: Some(snap.eligible_node_count),
         node_count: Some(node_count),
+        cluster_size: snap.cluster_size,
+        unreached_endpoints: snap.unreached_endpoints,
         config_aligned: Some(config_aligned),
         size_exceeded: Some(snap.size_exceeded),
         tombstone_gc_blocked: Some(snap.tombstone_gc_blocked),

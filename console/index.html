@@ -68,7 +68,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=live-topology-3"></script>
+  <script type="module" src="/js/app.js?v=live-topology-5"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -651,7 +651,7 @@
                       <svg class="w-4 h-4 flex-shrink-0" :class="!clusterLoaded ? 'text-vault-muted' : (cluster.enabled && !cluster.has_write_quorum ? 'text-red-400' : 'text-vault-accent')" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
                       <span class="text-base font-semibold whitespace-nowrap"
                             :class="!clusterLoaded ? 'text-vault-muted' : (cluster.enabled && !cluster.has_write_quorum ? 'text-red-400' : 'text-vault-accent')"
-                            x-text="!clusterLoaded ? '—' : (cluster.enabled ? ('Cluster · ' + cluster.live_node_count + '/' + cluster.node_count) : 'Single node')"></span>
+                            x-text="!clusterLoaded ? '—' : (cluster.enabled ? ('Cluster · ' + cluster.live_node_count + '/' + nodeTotal()) : 'Single node')"></span>
                     </div>
                   </div>
                   <div class="min-w-0">
@@ -740,7 +740,7 @@
                         <span class="text-amber-400 mr-2" title="The last topology polls failed: showing the last known state">Not updated · retrying</span>
                       </template>
                       <template x-if="clusterLoaded">
-                        <span><span class="font-semibold" :class="cluster.live_node_count === cluster.node_count ? 'text-green-400' : 'text-amber-400'" x-text="cluster.live_node_count"></span><span x-text="' / ' + cluster.node_count + ' online'"></span></span>
+                        <span><span class="font-semibold" :class="cluster.live_node_count === nodeTotal() ? 'text-green-400' : 'text-amber-400'" x-text="cluster.live_node_count"></span><span x-text="' / ' + nodeTotal() + ' online'"></span></span>
                       </template>
                       <template x-if="!clusterLoaded">
                         <span x-text="topologyFailing() ? 'Unreachable' : 'Loading…'"></span>
@@ -801,12 +801,14 @@
 
                   <!-- Node list -->
                   <div class="rounded-lg border border-vault-border/40 divide-y divide-vault-border/30 overflow-hidden">
-                    <template x-for="n in cluster.nodes" :key="n.node_id">
+                    <template x-for="n in cluster.nodes" :key="n.node_id || n.endpoint">
                       <div class="flex items-center gap-3 px-3 py-2.5">
                         <div :class="n.alive ? 'bg-green-400 pulse-green' : 'bg-red-400 pulse-red'" class="w-2.5 h-2.5 rounded-full flex-shrink-0" :title="n.alive ? 'Online' : 'Offline'"></div>
                         <div class="min-w-0 flex-1">
                           <div class="flex items-center gap-2 min-w-0">
-                            <span class="text-sm font-medium font-mono truncate" :title="n.node_id" x-text="n.node_id"></span>
+                            <span class="text-sm font-medium font-mono truncate" :class="n.unreached ? 'text-vault-muted' : ''"
+                                  :title="n.unreached ? 'Not seen since the answering node started: its identity is not known yet' : n.node_id"
+                                  x-text="n.unreached ? 'unknown node' : n.node_id"></span>
                             <template x-if="n.local">
                               <span class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-vault-accent/15 text-vault-accent flex-shrink-0"
                                     :title="cluster.enabled ? 'The node that answered the last poll (behind a load balancer each poll may reach a different node)' : ''"
@@ -823,7 +825,7 @@
                         <div class="text-right flex-shrink-0">
                           <div class="text-xs font-semibold" :class="n.alive ? 'text-green-400' : 'text-red-400'" x-text="n.alive ? 'Online' : 'Offline'"></div>
                           <!-- Kept (invisible) on the answering row of a cluster: the badge moves between rows, and the row height must not change with it. -->
-                          <div class="text-[10px] text-vault-muted/60" x-show="!n.local || cluster.enabled" :class="n.local ? 'invisible' : ''" x-text="n.local ? '—' : (n.last_seen ? relativeTime(n.last_seen) : 'never seen')"></div>
+                          <div class="text-[10px] text-vault-muted/60" x-show="!n.local || cluster.enabled" :class="n.local ? 'invisible' : ''" x-text="n.local ? '—' : (n.last_seen ? relativeTime(n.last_seen) : (n.unreached ? 'not seen since restart' : 'never seen'))"></div>
                           <div class="text-[10px] text-amber-400" x-show="n.sync && n.sync.lag > 0"
                             :title="'Entries this node still has to pull from the peer'"
                             x-text="n.sync ? ('sync lag ' + n.sync.lag) : ''"></div>

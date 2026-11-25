@@ -1,4 +1,4 @@
-import { api } from '../api.js?v=live-topology-3';
+import { api } from '../api.js?v=live-topology-5';
 import { formatBytes, formatUptime, ringColors, icons } from '../app.js';
 
 // ==================== DASHBOARD VIEW ====================
@@ -113,6 +113,12 @@ export function dashboardView() {
       }
     },
 
+    /// Cluster members: the configured size (quorum mode), or the rows known
+    /// to this node when larger (available mode has no configured size).
+    nodeTotal() {
+      return Math.max(this.cluster.cluster_size || 0, (this.cluster.nodes || []).length);
+    },
+
     /// The last TOPOLOGY_MAX_FAILURES polls all failed.
     topologyFailing() {
       return this.topologyFailures >= TOPOLOGY_MAX_FAILURES;
@@ -124,11 +130,17 @@ export function dashboardView() {
     /// false, so the disk getters keep their single-node (non cluster-min) path.
     /// A cluster's nodes are sorted by endpoint: the server lists itself first,
     /// and behind a load balancer every poll is answered by a different node,
-    /// so the server's order would shuffle the rows on each poll.
+    /// so the server's order would shuffle the rows on each poll. Members that
+    /// have not answered since the serving node started are known only by
+    /// their endpoint (`unreached_endpoints`): they get an offline row too.
     normalizeCluster(c) {
       if (c.enabled) {
+        const unreached = (c.unreached_endpoints || []).map(endpoint => ({
+          node_id: null, endpoint, alive: false, local: false, config_ok: true, last_seen: null, unreached: true,
+        }));
         const key = (n) => n.endpoint || n.node_id;
-        return { ...c, nodes: [...(c.nodes || [])].sort((a, b) => key(a).localeCompare(key(b))) };
+        const nodes = [...(c.nodes || []), ...unreached].sort((a, b) => key(a).localeCompare(key(b)));
+        return { ...c, nodes };
       }
       let host;
       try { host = new URL(sessionStorage.getItem('arca_endpoint') || window.location.origin).host; }

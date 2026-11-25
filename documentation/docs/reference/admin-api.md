@@ -93,12 +93,14 @@ Point the default load balancer check at plain `/admin/health`, and the health c
         "tombstone_gc_blocked": false,
         "worker_leader": true,
         "syncing": false,
-        "peers": [ "...one entry per known peer..." ]
+        "peers": [ "...one entry per known peer..." ],
+        "cluster_size": 3,
+        "unreached_endpoints": []
     }
 }
 ```
 
-`cluster` is `null` on a single-node deployment. Its fields mirror [`GET /admin/cluster`](#cluster-topology) (`write_quorum` is `null` in `available` mode); each `peers` entry carries `node_id`, `endpoint`, `alive`, `last_seen`, `authenticated`, `config_ok`, `disk_total`, `disk_available` and `max_seq`.
+`cluster` is `null` on a single-node deployment. Its fields mirror [`GET /admin/cluster`](#cluster-topology) (`write_quorum` and `cluster_size` are `null` in `available` mode, `unreached_endpoints` is always present, empty when every candidate answered); each `peers` entry carries `node_id`, `endpoint`, `alive`, `last_seen`, `authenticated`, `config_ok`, `disk_total`, `disk_available` and `max_seq`.
 
 ---
 
@@ -132,6 +134,7 @@ Returns the cluster topology and consistency state as seen by the node serving t
     "live_node_count": 3,
     "eligible_node_count": 3,
     "node_count": 3,
+    "cluster_size": 3,
     "config_aligned": true,
     "size_exceeded": false,
     "tombstone_gc_blocked": false,
@@ -178,6 +181,8 @@ Returns the cluster topology and consistency state as seen by the node serving t
 | `live_node_count` | integer | Reachable nodes, including this one (unauthenticated and config-drifted nodes included) |
 | `eligible_node_count` | integer | Nodes that count for replication and quorum (alive, authenticated and config-aligned, including this one) |
 | `node_count` | integer | Total known nodes, including this one |
+| `cluster_size` | integer? | Configured `[cluster].cluster_size`, the member count the write quorum is derived from. Omitted in `available` mode. |
+| `unreached_endpoints` | string[]? | Discovery candidates (e.g. static seeds) that have not answered since this node started. Membership is kept in memory, so after a restart a member that is still down is known only by its endpoint; it is not in `nodes` and counts for nothing until it answers. Omitted when empty. |
 | `config_aligned` | boolean | `false` when any live peer's cluster-critical configuration differs from this node's |
 | `size_exceeded` | boolean | `true` when more eligible nodes than `cluster_size` are live: the write gate is closed until the cluster is resized |
 | `tombstone_gc_blocked` | boolean | `true` while tombstone GC is skipped because a known peer has been unreachable beyond the grace window |

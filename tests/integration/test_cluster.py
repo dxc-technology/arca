@@ -12,6 +12,8 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
     cluster_full           all 3 up
     cluster_two_thirds     node 3 down (2/3 — quorum still met)
     cluster_one_third      nodes 2 & 3 down (1/3 — no quorum)
+    cluster_restarted_alone  node 1 restarted while 2 & 3 are down: they are
+                           listed as unreached seeds, the size stays 3
     cluster_catchup_verify all back up (anti-entropy must have converged)
     cluster_insufficient_storage  507 overlay (arca-3 on a tiny tmpfs)
     cluster_config_drift   drift overlay (arca-3 with a mismatched secret)
@@ -812,6 +814,44 @@ def test_r5_multipart_completes_on_returned_node():
 
 
 # ── Phase: 507 overlay (arca-3 on a tiny tmpfs) ───────────────────────────────
+
+@pytest.mark.cluster_full
+def test_topology_reports_cluster_size_and_no_unreached_member():
+    """All 3 up: /admin/cluster names the configured size and no unreached seed."""
+    data = _admin_get(NODES[1], "/admin/cluster")
+    assert data["cluster_size"] == 3
+    assert "unreached_endpoints" not in data  # omitted when empty
+    assert len(data["nodes"]) == 3
+
+
+# Seed endpoints of the compose cluster (docker/cluster/config.toml), as the
+# membership manager normalizes them.
+SEED_ENDPOINTS = {f"http://arca-{n}-cluster:9000" for n in (1, 2, 3)}
+
+
+@pytest.mark.cluster_restarted_alone
+def test_restarted_node_alone_lists_unreached_members():
+    """Node 1 restarted while 2 and 3 are down: they are unreached seeds.
+
+    Membership is in memory, so the restarted node does not know the two
+    members' identities. /admin/cluster must still say the cluster has 3
+    members (`cluster_size`) and list the two seeds that never answered, so the
+    console shows "1 / 3 online" next to the closed write gate, not "1 / 1".
+    """
+    deadline = time.time() + 30
+    data = {}
+    while time.time() < deadline:
+        data = _admin_get(NODES[1], "/admin/cluster")
+        if len(data.get("unreached_endpoints", [])) == 2:
+            break
+        time.sleep(1)
+    assert data["cluster_size"] == 3
+    assert data["live_node_count"] == 1
+    assert data["has_write_quorum"] is False
+    assert len(data["nodes"]) == 1, "only this node is known by identity"
+    own = data["nodes"][0]["endpoint"]
+    assert set(data.get("unreached_endpoints", [])) == SEED_ENDPOINTS - {own}
+
 
 @pytest.mark.cluster_insufficient_storage
 def test_put_exceeding_smallest_node_is_rejected():
