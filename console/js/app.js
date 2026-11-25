@@ -2,9 +2,9 @@
  * Contains AI-generated code: see the NOTICE file at the repository root.
  * https://github.com/dxc-technology/arca/blob/main/NOTICE
  */
-import { api } from './api.js?v=deeplink-1';
+import { api } from './api.js?v=live-topology-3';
 import { topicFor } from './help.js';
-import { dashboardView } from './views/dashboard.js?v=transport-proxy-1';
+import { dashboardView } from './views/dashboard.js?v=live-topology-3';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
 import { bucketDetailView } from './views/bucket-detail.js?v=deeplink-1';
 import { credentialsView } from './views/credentials.js';

@@ -1,49 +1,50 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=live-topology-3';
 import { formatBytes, formatUptime, ringColors, icons } from '../app.js';
 
 // ==================== DASHBOARD VIEW ====================
+
+// Health + topology poll: two small GETs, so it runs far more often than the
+// full refresh and keeps the topology card live while a node fails or rejoins.
+const TOPOLOGY_POLL_MS = 3000;
+// Per-request budget. A request the load balancer routes to a node that has
+// just died can hang until the LB evicts that node: abort it and let the next
+// poll (which round-robins to another node) answer instead.
+const TOPOLOGY_TIMEOUT_MS = 2500;
+// Consecutive failed polls before the last known state is flagged as stale and
+// the health indicator turns to "Unreachable". Below this a failed poll is
+// absorbed silently: the card keeps the last answer, so nothing flickers.
+const TOPOLOGY_MAX_FAILURES = 3;
+
 export function dashboardView() {
   return {
     health: 'unknown',
     info: {},
     stats: {},
-    cluster: { enabled: false },
+    cluster: { enabled: false, nodes: [] },
+    // False until the first /admin/cluster answer: the topology widgets render
+    // a neutral loading state, never values made up from an empty object.
+    clusterLoaded: false,
+    topologyFailures: 0,
+    topologyInFlight: false,
     bucketSizes: [],
     ringSegments: [],
     ringColors,
     icons,
     refreshInterval: null,
+    topologyInterval: null,
 
     async load() {
+      // Started first: the full refresh can take a while (it lists every
+      // bucket), and the topology must not wait for it.
+      this.topologyInterval = setInterval(() => this.refreshTopology(), TOPOLOGY_POLL_MS);
       await this.refresh();
       this.refreshInterval = setInterval(() => this.refresh(), 30000);
     },
 
     async refresh() {
-      try {
-        // Health (unauthenticated)
-        const endpoint = sessionStorage.getItem('arca_endpoint');
-        const hResp = await fetch(endpoint + '/admin/health');
-        const hBody = await hResp.json();
-        this.health = hBody.status || 'error';
-      } catch { this.health = 'error'; }
-
+      await this.refreshTopology();
       try { this.info = await api.adminGet('/info'); } catch {}
       try { this.stats = await api.adminGet('/stats'); } catch {}
-      try { this.cluster = await api.adminGet('/cluster'); } catch { this.cluster = { enabled: false }; }
-      // Normalize a single-node deployment into the same shape the topology box
-      // renders, so the dashboard layout is identical whether or not clustering
-      // is enabled (the box then shows just this one node). `enabled` stays
-      // false, so the disk getters keep their single-node (non cluster-min) path.
-      if (!this.cluster.enabled) {
-        let host;
-        try { host = new URL(sessionStorage.getItem('arca_endpoint') || window.location.origin).host; }
-        catch { host = window.location.host; }
-        this.cluster.node_count = 1;
-        this.cluster.live_node_count = 1;
-        this.cluster.has_write_quorum = true;
-        this.cluster.nodes = [{ node_id: host || 'local node', endpoint: null, alive: true, local: true, config_ok: true, last_seen: null }];
-      }
 
       // Get per-bucket sizes via ListBuckets + ListObjects
       try {
@@ -86,6 +87,59 @@ export function dashboardView() {
         this.bucketSizes = sizes;
         this.computeRing(sizes);
       } catch {}
+    },
+
+    /// One health + topology probe. Skipped while the previous one is still in
+    /// flight or the tab is hidden. On failure the last known state stays on
+    /// screen; only TOPOLOGY_MAX_FAILURES consecutive failures mark it stale.
+    async refreshTopology() {
+      if (this.topologyInFlight || document.hidden) return;
+      this.topologyInFlight = true;
+      try {
+        const endpoint = sessionStorage.getItem('arca_endpoint');
+        const [hBody, cluster] = await Promise.all([
+          fetch(endpoint + '/admin/health', { signal: AbortSignal.timeout(TOPOLOGY_TIMEOUT_MS) }).then(r => r.json()),
+          api.adminGet('/cluster', { signal: AbortSignal.timeout(TOPOLOGY_TIMEOUT_MS) }),
+        ]);
+        this.health = hBody.status || 'error';
+        this.cluster = this.normalizeCluster(cluster);
+        this.clusterLoaded = true;
+        this.topologyFailures = 0;
+      } catch {
+        this.topologyFailures++;
+        if (this.topologyFailing()) this.health = 'error';
+      } finally {
+        this.topologyInFlight = false;
+      }
+    },
+
+    /// The last TOPOLOGY_MAX_FAILURES polls all failed.
+    topologyFailing() {
+      return this.topologyFailures >= TOPOLOGY_MAX_FAILURES;
+    },
+
+    /// Normalize a single-node deployment into the same shape the topology box
+    /// renders, so the dashboard layout is identical whether or not clustering
+    /// is enabled (the box then shows just this one node). `enabled` stays
+    /// false, so the disk getters keep their single-node (non cluster-min) path.
+    /// A cluster's nodes are sorted by endpoint: the server lists itself first,
+    /// and behind a load balancer every poll is answered by a different node,
+    /// so the server's order would shuffle the rows on each poll.
+    normalizeCluster(c) {
+      if (c.enabled) {
+        const key = (n) => n.endpoint || n.node_id;
+        return { ...c, nodes: [...(c.nodes || [])].sort((a, b) => key(a).localeCompare(key(b))) };
+      }
+      let host;
+      try { host = new URL(sessionStorage.getItem('arca_endpoint') || window.location.origin).host; }
+      catch { host = window.location.host; }
+      return {
+        ...c,
+        node_count: 1,
+        live_node_count: 1,
+        has_write_quorum: true,
+        nodes: [{ node_id: host || 'local node', endpoint: null, alive: true, local: true, config_ok: true, last_seen: null }],
+      };
     },
 
     computeRing(sizes) {
@@ -159,6 +213,9 @@ export function dashboardView() {
     formatBytes,
     formatUptime,
 
-    destroy() { clearInterval(this.refreshInterval); },
+    destroy() {
+      clearInterval(this.refreshInterval);
+      clearInterval(this.topologyInterval);
+    },
   };
 }

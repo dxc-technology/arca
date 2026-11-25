@@ -105,8 +105,8 @@ The dashboard is available to **admin credentials only**. It shows:
 - **Storage stats**: bucket count, object count, total storage size
 - **Storage distribution**: SVG donut chart showing size per bucket
 - **Encryption status**: whether server-side encryption is active (SSE-S3 with local key or Vault/OpenBAO KMS)
-- **Topology**: a dedicated card showing the deployment topology. On a single node it shows that one node ("Single node", Writable); in a [cluster](ha.md) it shows the consistency mode, write-quorum status, and a live node list (online/offline, "this node", endpoints, last-seen, and config-mismatch flags)
-- **Health indicator**: real-time server health status with auto-refresh
+- **Topology**: a dedicated card showing the deployment topology. On a single node it shows that one node ("Single node", Writable); in a [cluster](ha.md) it shows the consistency mode, write-quorum status, and a live node list (online/offline, endpoints, last-seen, and config-mismatch flags). The rows are sorted by endpoint; the **answered** badge marks the node that served the last poll, which behind a load balancer changes from poll to poll. The card and the health indicator refresh every 3 seconds without reloading the page, so a node going down or coming back shows within a few seconds. A failed poll keeps the last known state on screen; after three consecutive failures the card says **Not updated · retrying** and the health indicator turns to **Unreachable**. The rest of the dashboard refreshes every 30 seconds
+- **Health indicator**: Healthy, Unreachable, or the node's own status while it is draining or syncing
 
 ## Bucket Management
 

@@ -132,7 +132,7 @@ export function apiClient() {
   const encodeKeyPath = (key) => key.split('/').map(s => encodeURIComponent(s)).join('/');
 
   return {
-    async request(method, path, { body = null, contentType = null, rawResponse = false, queryParams = {}, headers: extraHeaders = {} } = {}) {
+    async request(method, path, { body = null, contentType = null, rawResponse = false, queryParams = {}, headers: extraHeaders = {}, signal = undefined } = {}) {
       const endpoint = getEndpoint();
       let url = endpoint + path;
 
@@ -154,7 +154,7 @@ export function apiClient() {
 
       await SigV4.sign(method, url, headers, signBody, getAccessKey(), getSecretKey());
 
-      const fetchOpts = { method, headers };
+      const fetchOpts = { method, headers, signal };
       if (body !== null && body !== undefined) fetchOpts.body = body;
 
       const resp = await fetch(url, fetchOpts);
@@ -163,8 +163,8 @@ export function apiClient() {
     },
 
     // Admin API helpers (JSON)
-    async adminGet(path) {
-      const resp = await this.request('GET', '/admin' + path);
+    async adminGet(path, { signal } = {}) {
+      const resp = await this.request('GET', '/admin' + path, { signal });
       if (!resp.ok) throw new Error(`Admin API error: ${resp.status}`);
       return resp.json();
     },

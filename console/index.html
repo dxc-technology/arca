@@ -68,7 +68,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=granular-actions-1"></script>
+  <script type="module" src="/js/app.js?v=live-topology-3"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -596,8 +596,8 @@
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-xl font-semibold tracking-tight">Dashboard</h2>
               <div class="flex items-center gap-2 text-xs text-vault-muted">
-                <div :class="health === 'ok' ? 'bg-green-400 pulse-green' : 'bg-red-400 pulse-red'" class="w-2 h-2 rounded-full"></div>
-                <span x-text="health === 'ok' ? 'Healthy' : 'Unreachable'"></span>
+                <div :class="health === 'ok' ? 'bg-green-400 pulse-green' : (health === 'unknown' ? 'bg-vault-muted' : (health === 'error' ? 'bg-red-400 pulse-red' : 'bg-amber-400'))" class="w-2 h-2 rounded-full"></div>
+                <span x-text="health === 'ok' ? 'Healthy' : (health === 'unknown' ? 'Checking…' : (health === 'error' ? 'Unreachable' : health.charAt(0).toUpperCase() + health.slice(1)))"></span>
               </div>
             </div>
 
@@ -648,10 +648,10 @@
                   <div class="min-w-0">
                     <div class="text-vault-muted text-xs mb-1">Topology</div>
                     <div class="flex items-center gap-1.5">
-                      <svg class="w-4 h-4 flex-shrink-0" :class="cluster.enabled && !cluster.has_write_quorum ? 'text-red-400' : 'text-vault-accent'" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
+                      <svg class="w-4 h-4 flex-shrink-0" :class="!clusterLoaded ? 'text-vault-muted' : (cluster.enabled && !cluster.has_write_quorum ? 'text-red-400' : 'text-vault-accent')" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
                       <span class="text-base font-semibold whitespace-nowrap"
-                            :class="cluster.enabled && !cluster.has_write_quorum ? 'text-red-400' : 'text-vault-accent'"
-                            x-text="cluster.enabled ? ('Cluster · ' + cluster.live_node_count + '/' + cluster.node_count) : 'Single node'"></span>
+                            :class="!clusterLoaded ? 'text-vault-muted' : (cluster.enabled && !cluster.has_write_quorum ? 'text-red-400' : 'text-vault-accent')"
+                            x-text="!clusterLoaded ? '—' : (cluster.enabled ? ('Cluster · ' + cluster.live_node_count + '/' + cluster.node_count) : 'Single node')"></span>
                     </div>
                   </div>
                   <div class="min-w-0">
@@ -736,7 +736,15 @@
                       <span class="text-xs font-medium text-vault-muted uppercase tracking-wider" x-text="cluster.enabled ? 'Cluster Topology' : 'Topology'"></span>
                     </div>
                     <span class="text-xs text-vault-muted whitespace-nowrap">
-                      <span class="font-semibold" :class="cluster.live_node_count === cluster.node_count ? 'text-green-400' : 'text-amber-400'" x-text="cluster.live_node_count"></span><span x-text="' / ' + cluster.node_count + ' online'"></span>
+                      <template x-if="clusterLoaded && topologyFailing()">
+                        <span class="text-amber-400 mr-2" title="The last topology polls failed: showing the last known state">Not updated · retrying</span>
+                      </template>
+                      <template x-if="clusterLoaded">
+                        <span><span class="font-semibold" :class="cluster.live_node_count === cluster.node_count ? 'text-green-400' : 'text-amber-400'" x-text="cluster.live_node_count"></span><span x-text="' / ' + cluster.node_count + ' online'"></span></span>
+                      </template>
+                      <template x-if="!clusterLoaded">
+                        <span x-text="topologyFailing() ? 'Unreachable' : 'Loading…'"></span>
+                      </template>
                     </span>
                   </div>
 
@@ -745,7 +753,7 @@
                     <div class="min-w-0">
                       <div class="text-vault-muted text-xs mb-1">Mode</div>
                       <div class="flex items-center gap-1.5">
-                        <template x-if="!cluster.enabled">
+                        <template x-if="clusterLoaded && !cluster.enabled">
                           <svg class="w-4 h-4 text-vault-accent flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z"/></svg>
                         </template>
                         <template x-if="cluster.enabled && cluster.mode === 'quorum'">
@@ -755,22 +763,22 @@
                           <svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>
                         </template>
                         <span class="text-base font-semibold whitespace-nowrap"
-                              :class="!cluster.enabled ? 'text-vault-accent' : (cluster.mode === 'quorum' ? 'text-vault-indigo' : 'text-amber-400')"
-                              x-text="!cluster.enabled ? 'Single node' : (cluster.mode === 'quorum' ? ('Quorum' + (cluster.write_quorum ? ' · W=' + cluster.write_quorum : '')) : 'Available')"></span>
+                              :class="!clusterLoaded ? 'text-vault-muted' : (!cluster.enabled ? 'text-vault-accent' : (cluster.mode === 'quorum' ? 'text-vault-indigo' : 'text-amber-400'))"
+                              x-text="!clusterLoaded ? '—' : !cluster.enabled ? 'Single node' : (cluster.mode === 'quorum' ? ('Quorum' + (cluster.write_quorum ? ' · W=' + cluster.write_quorum : '')) : 'Available')"></span>
                       </div>
                     </div>
                     <div class="min-w-0">
                       <div class="text-vault-muted text-xs mb-1">Write status</div>
                       <div class="flex items-center gap-1.5">
-                        <template x-if="cluster.has_write_quorum">
+                        <template x-if="clusterLoaded && cluster.has_write_quorum">
                           <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
                         </template>
-                        <template x-if="!cluster.has_write_quorum">
+                        <template x-if="clusterLoaded && !cluster.has_write_quorum">
                           <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>
                         </template>
                         <span class="text-base font-semibold whitespace-nowrap"
-                              :class="cluster.has_write_quorum ? 'text-green-400' : 'text-red-400'"
-                              x-text="cluster.has_write_quorum ? 'Writable' : 'Read-only'"></span>
+                              :class="!clusterLoaded ? 'text-vault-muted' : (cluster.has_write_quorum ? 'text-green-400' : 'text-red-400')"
+                              x-text="!clusterLoaded ? '—' : (cluster.has_write_quorum ? 'Writable' : 'Read-only')"></span>
                       </div>
                     </div>
                   </div>
@@ -800,7 +808,9 @@
                           <div class="flex items-center gap-2 min-w-0">
                             <span class="text-sm font-medium font-mono truncate" :title="n.node_id" x-text="n.node_id"></span>
                             <template x-if="n.local">
-                              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-vault-accent/15 text-vault-accent flex-shrink-0">this node</span>
+                              <span class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-vault-accent/15 text-vault-accent flex-shrink-0"
+                                    :title="cluster.enabled ? 'The node that answered the last poll (behind a load balancer each poll may reach a different node)' : ''"
+                                    x-text="cluster.enabled ? 'answered' : 'this node'"></span>
                             </template>
                             <template x-if="!n.config_ok">
                               <span class="flex-shrink-0 text-amber-400" title="Config mismatch with this node">
@@ -812,7 +822,8 @@
                         </div>
                         <div class="text-right flex-shrink-0">
                           <div class="text-xs font-semibold" :class="n.alive ? 'text-green-400' : 'text-red-400'" x-text="n.alive ? 'Online' : 'Offline'"></div>
-                          <div class="text-[10px] text-vault-muted/60" x-show="!n.local" x-text="n.last_seen ? relativeTime(n.last_seen) : 'never seen'"></div>
+                          <!-- Kept (invisible) on the answering row of a cluster: the badge moves between rows, and the row height must not change with it. -->
+                          <div class="text-[10px] text-vault-muted/60" x-show="!n.local || cluster.enabled" :class="n.local ? 'invisible' : ''" x-text="n.local ? '—' : (n.last_seen ? relativeTime(n.last_seen) : 'never seen')"></div>
                           <div class="text-[10px] text-amber-400" x-show="n.sync && n.sync.lag > 0"
                             :title="'Entries this node still has to pull from the peer'"
                             x-text="n.sync ? ('sync lag ' + n.sync.lag) : ''"></div>

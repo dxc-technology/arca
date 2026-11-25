@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The console topology card follows the cluster live.** The card and the health indicator refreshed only with the whole dashboard, every 30 seconds, so a node failure showed late or needed a reload. They now poll every 3 seconds, with a timeout per request and no overlapping polls; the rest of the dashboard keeps its 30-second cycle. Behind a load balancer each poll is answered by a different node, so the node rows are now sorted by endpoint (the server lists itself first) and the "this node" badge reads **answered**.
+- **The topology card no longer shows made-up values.** While the first answer was pending it rendered "Single node", "/ undefined online" and "Read-only", and a failed request was shown as a healthy single node. It now shows a loading state, keeps the last known state when a poll fails, and flags it as stale after three consecutive failures. The health indicator says "Checking…" before the first answer and shows the node's own status (draining, syncing) instead of "Unreachable".
+
 ## [0.35.0] — 2026-11-13
 
 ### Security
