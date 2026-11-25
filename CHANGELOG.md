@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-11-25
+
 ### Security
 
 - **OpenSSL CVE-2026-107496, -95691, -95692, -88822, -88823** in the console image. Its Alpine base ships `libssl3`/`libcrypto3` 3.5.9-r0; the console now requires `>= 3.5.9-r1`, and so do the two connector-test receivers. The console's `nginx`, installed from the Alpine repository at build time, comes out as 1.30.8-r0, past the nine nginx advisories fixed in 1.30.7-r0 (four critical, two high, among them HTTP/2 flaws) that the published 0.35.0 console image, on 1.30.6-r0, carries: upgrade the console. The receivers drop their `libuuid` constraint, which their base image now satisfies on its own.
@@ -1092,7 +1094,8 @@ Tagged but never published; its changes ship in [0.34.1](#0341-2026-10-30).
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/dxc-technology/arca/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/dxc-technology/arca/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.1
 [0.34.0]: https://github.com/dxc-technology/arca/compare/v0.33.0...v0.34.0

@@ -1267,7 +1267,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0360-2026-11-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.36.0 — 2026-11-25
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.36.0 — 2026-11-25">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3554,7 +3565,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0360-2026-11-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.36.0 — 2026-11-25
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.36.0 — 2026-11-25">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -5795,7 +5817,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.35.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.36.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0360-2026-11-25"><a href="https://github.com/dxc-technology/arca/compare/v0.35.0...v0.36.0">0.36.0</a> — 2026-11-25<a class="headerlink" href="#0360-2026-11-25" title="Permanent link">&para;</a></h2>
 <h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>OpenSSL CVE-2026-107496, -95691, -95692, -88822, -88823</strong> in the console image. Its Alpine base ships <code>libssl3</code>/<code>libcrypto3</code> 3.5.9-r0; the console now requires <code>&gt;= 3.5.9-r1</code>, and so do the two connector-test receivers. The console's <code>nginx</code>, installed from the Alpine repository at build time, comes out as 1.30.8-r0, past the nine nginx advisories fixed in 1.30.7-r0 (four critical, two high, among them HTTP/2 flaws) that the published 0.35.0 console image, on 1.30.6-r0, carries: upgrade the console. The receivers drop their <code>libuuid</code> constraint, which their base image now satisfies on its own.</li>
