@@ -3338,6 +3338,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>The per-IP rate limit trusts <code>X-Forwarded-For</code> from any client</strong> (TD-055): a client talking to Arca directly can evade the per-IP limit with a fake header, and the audit log records it as the source address. First step: also record the peer address in the audit log; then a trusted-proxies setting.</li>
 <li><strong>Lifecycle never removes delete markers</strong> (TD-056): <code>ExpiredObjectDeleteMarker</code> is accepted but not acted on, and noncurrent delete markers are never expired. Nothing is lost, the markers only accumulate.</li>
 <li><strong>A fresh blob is orphaned after a failed metadata write</strong> (TD-057): on a database error the upload handlers keep the blob they just wrote, because the row may have been committed (a cluster quorum shortfall, an error at COMMIT); <code>gc</code> reclaims it after its grace period. Needs a definite "not committed" error from the stores.</li>
+<li><strong>A restart forgets a dead peer for the tombstone-GC guard</strong> (TD-058): membership is in memory, so a node restarted while a peer is down no longer counts that peer as a GC blocker. Harmless with the default prune window; with <code>peer_prune_days</code> above <code>tombstone_grace_days</code> a returning peer can resurrect deleted data. Fix: persist the known members.</li>
 </ul>
 
 

@@ -132,6 +132,8 @@ pub fn spawn(
 
     tokio::spawn(async move {
         // endpoint -> probe bookkeeping (identity, failure streak, last contact).
+        // TECHDEBT(TD-058): in memory only, so a restart forgets dead peers
+        // (they stop blocking tombstone GC before `peer_prune_days`).
         let mut known: BTreeMap<String, ProbeState> = BTreeMap::new();
         // node_ids currently flagged (config drift / legacy / failed challenge),
         // so each condition logs once on transition rather than every tick.

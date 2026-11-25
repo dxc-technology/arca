@@ -1620,6 +1620,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>none yet: needs a store that fails on demand</td>
 <td><code>crates/arca-proto/src/handlers/object.rs</code>, <code>crates/arca-proto/src/handlers/multipart.rs</code></td>
 </tr>
+<tr>
+<td>TD-058</td>
+<td>A restart forgets a dead peer for the tombstone-GC guard</td>
+<td>Membership is in memory and a peer is listed only once it has answered, so a node that restarts while a peer is down does not know that peer: it is only an unreached endpoint, which counts for nothing. The tombstone-GC liveness guard (<code>tombstone_gc_blockers</code>) blocks GC on a known dead peer unseen beyond <code>tombstone_grace_days</code>, until membership prunes it after <code>peer_prune_days</code>. With the default (<code>peer_prune_days</code> = <code>tombstone_grace_days</code>) the two coincide and a restart changes nothing. With <code>peer_prune_days</code> set higher, a survivor that restarts drops the dead peer and runs tombstone GC during the extra window the operator asked for; if the peer comes back in that window its stale rows can resurrect deleted data. Counting unreached endpoints as blockers is not a fix: one that never answered has no last contact to age, so a wrong or retired seed would block GC forever</td>
+<td>Persist the known members (node id, endpoint, last contact) in the node's metadata, load them at startup so a dead peer keeps its <code>last_seen</code> across a restart, and prune them as today</td>
+<td>none yet: needs a cluster test with <code>peer_prune_days</code> &gt; <code>tombstone_grace_days</code> and a survivor restarted during the peer's downtime</td>
+<td><code>crates/arca-server/src/cluster/membership.rs</code>, <code>crates/arca-core/src/cluster.rs</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
