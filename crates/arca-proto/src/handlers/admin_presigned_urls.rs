@@ -29,7 +29,7 @@ pub async fn list_presigned_urls(
     let records = store
         .list_presigned_urls(&query.bucket)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(Json(records))
 }
@@ -47,7 +47,7 @@ pub async fn delete_presigned_url(
     let deleted = store
         .delete_presigned_url(&id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     if deleted {
         Ok(http::StatusCode::NO_CONTENT.into_response())

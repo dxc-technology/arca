@@ -54,7 +54,7 @@ pub async fn list_teams(
         .teams
         .list_teams()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let mut response = Vec::new();
     for t in teams {
@@ -98,7 +98,7 @@ pub async fn create_team(
             if e.to_string().contains("UNIQUE constraint") {
                 AdminError::conflict(format!("Team name \"{}\" already exists", team.name))
             } else {
-                AdminError::internal(e.to_string())
+                AdminError::from_store(e)
             }
         })?;
 
@@ -121,20 +121,20 @@ pub async fn get_team(
         .teams
         .get_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
     let members = state
         .teams
         .list_members(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let grants = state
         .grants
         .list_team_grants(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(Json(TeamDetailResponse {
         team_id: team.team_id,
@@ -156,7 +156,7 @@ pub async fn update_team(
         .teams
         .get_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
     state
@@ -171,7 +171,7 @@ pub async fn update_team(
             if e.to_string().contains("UNIQUE") {
                 AdminError::conflict("Team name already exists")
             } else {
-                AdminError::internal(e.to_string())
+                AdminError::from_store(e)
             }
         })?;
 
@@ -187,7 +187,7 @@ pub async fn delete_team(
         .teams
         .delete_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -205,14 +205,14 @@ pub async fn list_members(
         .teams
         .get_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
     let members = state
         .teams
         .list_members(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response: Vec<serde_json::Value> = members
         .into_iter()
@@ -238,21 +238,21 @@ pub async fn add_member(
         .teams
         .get_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
     state
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     state
         .teams
         .add_member(&team_id, &user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -266,7 +266,7 @@ pub async fn remove_member(
         .teams
         .remove_member(&team_id, &user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     if removed {
         Ok(StatusCode::NO_CONTENT)
@@ -284,14 +284,14 @@ pub async fn list_team_grants(
         .teams
         .get_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
     let grants = state
         .grants
         .list_team_grants(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response: Vec<serde_json::Value> = grants
         .into_iter()
@@ -316,21 +316,21 @@ pub async fn attach_team_grant(
         .teams
         .get_team(&team_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
     state
         .grants
         .get_grant(&grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Grant {grant_id} not found")))?;
 
     state
         .grants
         .attach_to_team(&team_id, &grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -344,7 +344,7 @@ pub async fn detach_team_grant(
         .grants
         .detach_from_team(&team_id, &grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     if detached {
         Ok(StatusCode::NO_CONTENT)

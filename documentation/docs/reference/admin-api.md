@@ -27,6 +27,7 @@ Common error codes:
 | `NotFound` | 404 | Entity not found |
 | `Conflict` | 409 | Constraint violation (duplicate name, cannot delete last admin, etc.) |
 | `InternalError` | 500 | Server-side error |
+| `ServiceUnavailable` | 503 | The cluster refuses writes (no write quorum, or cluster size exceeded): the `message` says which. Carries `Retry-After: 5`; reads keep working |
 
 ---
 

@@ -1873,6 +1873,51 @@ impl ClusterState {
         self.tombstone_gc_blocked.load(Ordering::Relaxed)
     }
 
+    /// Maps the write gate to the client-facing `503` shared by every write
+    /// path: the metadata and control-plane decorators and the handlers that
+    /// must refuse a whole request up front (DeleteObjects). A
+    /// [`WriteGate::NoQuorum`] refusal is counted for the cluster state
+    /// logger.
+    ///
+    /// Both refusals are [`FailureClass::Expected`]: the cluster state logger
+    /// reports the episode (with the count of refused writes), so the access
+    /// log keeps each refused request at DEBUG.
+    pub fn check_write_gate(&self) -> Result<(), crate::ArcaError> {
+        use crate::{ArcaError, FailureClass, S3Error, S3ErrorCode};
+        match self.write_gate() {
+            WriteGate::Open => Ok(()),
+            WriteGate::NoQuorum { eligible, quorum } => {
+                self.record_write_refused_no_quorum();
+                Err(ArcaError::S3(
+                    S3Error::with_message(
+                        S3ErrorCode::ServiceUnavailable,
+                        format!(
+                            "cluster write quorum not available ({eligible} eligible node(s), \
+                             {quorum} required)"
+                        ),
+                        "/",
+                    )
+                    .with_failure_class(FailureClass::Expected),
+                ))
+            }
+            WriteGate::SizeExceeded {
+                eligible,
+                cluster_size,
+            } => Err(ArcaError::S3(
+                S3Error::with_message(
+                    S3ErrorCode::ServiceUnavailable,
+                    format!(
+                        "cluster size exceeded: {eligible} eligible nodes for cluster_size = \
+                         {cluster_size} — writes are refused to prevent split-brain; remove the \
+                         extra node(s) or resize the cluster (see the HA guide runbook)"
+                    ),
+                    "/",
+                )
+                .with_failure_class(FailureClass::Expected),
+            )),
+        }
+    }
+
     /// Counts a write refused by the write gate for lack of quorum.
     pub fn record_write_refused_no_quorum(&self) {
         self.writes_refused_no_quorum.fetch_add(1, Ordering::Relaxed);

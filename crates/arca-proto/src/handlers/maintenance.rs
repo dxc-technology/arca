@@ -89,7 +89,7 @@ pub async fn create_job(
     if store
         .active_job()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .is_some()
     {
         return Err(AdminError::conflict(
@@ -116,7 +116,7 @@ pub async fn create_job(
     store
         .create_job(&job)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok((StatusCode::CREATED, Json(job)))
 }
@@ -131,11 +131,11 @@ pub async fn list_jobs(
     let active = store
         .active_job()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let jobs = store
         .list_jobs(limit)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "active": active, "jobs": jobs })))
 }
 
@@ -146,7 +146,7 @@ pub async fn clear_jobs(State(state): State<AppState>) -> Result<impl IntoRespon
     let cleared = store
         .clear_terminal_jobs()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "cleared": cleared })))
 }
 
@@ -159,12 +159,12 @@ pub async fn get_job(
     let job = store
         .get_job(&id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("job \"{id}\" not found")))?;
     let logs = store
         .list_job_logs(&id, DEFAULT_MAX_JOB_LOGS)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "job": job, "logs": logs })))
 }
 
@@ -229,7 +229,7 @@ async fn transition(
     let job = store
         .get_job(id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("job \"{id}\" not found")))?;
     let current = MaintenanceJobStatus::parse(&job.status)
         .ok_or_else(|| AdminError::internal(format!("bad status: {}", job.status)))?;
@@ -242,13 +242,13 @@ async fn transition(
     store
         .set_job_status(id, to, None)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let _ = store
         .append_job_log(id, "info", &format!("job {verb}d by operator"), DEFAULT_MAX_JOB_LOGS)
         .await;
     let updated = store
         .get_job(id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(updated).into_response())
 }

@@ -56,7 +56,7 @@ pub async fn list_grants(
         .grants
         .list_grants()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response: Vec<GrantListItem> = grants
         .into_iter()
@@ -113,7 +113,7 @@ pub async fn create_grant(
             if e.to_string().contains("UNIQUE constraint") {
                 AdminError::conflict(format!("Grant name \"{}\" already exists", grant.name))
             } else {
-                AdminError::internal(e.to_string())
+                AdminError::from_store(e)
             }
         })?;
 
@@ -138,7 +138,7 @@ pub async fn get_grant(
         .grants
         .get_grant(&grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Grant {grant_id} not found")))?;
 
     Ok(Json(GrantResponse {
@@ -161,7 +161,7 @@ pub async fn update_grant(
         .grants
         .get_grant(&grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Grant {grant_id} not found")))?;
 
     let parsed_doc = if let Some(ref doc_value) = body.document {
@@ -190,7 +190,7 @@ pub async fn update_grant(
             parsed_doc.as_ref(),
         )
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -204,7 +204,7 @@ pub async fn delete_grant(
         .grants
         .delete_grant(&grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

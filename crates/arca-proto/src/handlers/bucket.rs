@@ -10,7 +10,7 @@ use arca_core::s3::xml_types;
 use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
 use arca_core::store::{BatchDeleteEntry, DeletePrecondition, VersionPosition};
 use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEntry, ObjectRecord};
-use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
+use arca_core::{validate_bucket_name, FailureClass, S3Error, S3ErrorCode};
 
 use crate::handlers::admin_settings::effective_region;
 use crate::handlers::delimited::{list_delimited, past_prefix, DelimitedPage, ListFrom, Listed, LIST_BATCH};
@@ -1610,7 +1610,11 @@ pub async fn create_bucket(
         };
         // Empty PUT removes the notification configuration (S3 has no Delete operation for this).
         if config.is_empty() {
-            let _ = state.metadata.delete_bucket_config(&bucket, "notification_configuration").await;
+            if let Err(e) =
+                state.metadata.delete_bucket_config(&bucket, "notification_configuration").await
+            {
+                return internal_error_response(e, &resource);
+            }
             return Response::builder()
                 .status(StatusCode::OK)
                 .body(Body::empty())
@@ -1661,10 +1665,30 @@ pub async fn create_bucket(
                     enabled: true,
                     default_retention: None,
                 };
-                if let Ok(json) = serde_json::to_string(&lock_config) {
-                    let _ = state.metadata.set_bucket_config(&bucket, "object_lock", &json).await;
+                // A bucket asked for with Object Lock must never exist without
+                // it: if either setting cannot be stored, undo the creation
+                // (best effort, the bucket is still empty) and fail.
+                let configured = match serde_json::to_string(&lock_config) {
+                    Ok(json) => {
+                        match state.metadata.set_bucket_config(&bucket, "object_lock", &json).await {
+                            Ok(()) => state
+                                .metadata
+                                .set_bucket_config(&bucket, "versioning", "Enabled")
+                                .await,
+                            Err(e) => Err(e),
+                        }
+                    }
+                    Err(e) => Err(ArcaError::Internal(e.to_string())),
+                };
+                if let Err(e) = configured {
+                    if let Err(undo) = state.metadata.delete_bucket(&bucket).await {
+                        tracing::error!(
+                            bucket = %bucket, error = %undo,
+                            "could not remove a bucket created without its Object Lock settings"
+                        );
+                    }
+                    return internal_error_response(e, &resource);
                 }
-                let _ = state.metadata.set_bucket_config(&bucket, "versioning", "Enabled").await;
             }
             Response::builder()
                 .status(StatusCode::OK)
@@ -1963,6 +1987,16 @@ async fn delete_objects(
         Err(e) => return internal_error_response(e, &resource),
     }
 
+    // A cluster that refuses writes refuses the whole request, as
+    // DeleteObject does: the service is unavailable, not each key. Answering
+    // 200 with one error per key would hide the cause from clients that only
+    // look at the status, and keep them from retrying.
+    if let Some(cluster) = &state.cluster {
+        if let Err(e) = cluster.check_write_gate() {
+            return internal_error_response(e, &resource);
+        }
+    }
+
     let quiet = delete_body.quiet;
 
     /// What became of one key of the request, in request order.
@@ -2074,6 +2108,22 @@ async fn delete_objects(
             }
             Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed => {
                 errors.push(precondition_failed(obj));
+            }
+            // An S3 error keeps its code and message (e.g. the cluster losing
+            // its write quorum during the batch); a deliberate refusal is not
+            // a fault, its cause is logged by its owner.
+            Err(ArcaError::S3(e)) => {
+                if e.failure_class == FailureClass::Expected {
+                    tracing::debug!(error = %e, key = %obj.key, "Object not deleted");
+                } else {
+                    tracing::error!(error = %e, key = %obj.key, "Error deleting object");
+                }
+                errors.push(DeleteErrorEntry {
+                    key: obj.key.clone(),
+                    version_id: obj.version_id.clone(),
+                    code: e.code.as_str().to_string(),
+                    message: e.message,
+                });
             }
             Err(e) => {
                 tracing::error!(error = %e, key = %obj.key, "Error deleting object");

@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::ffi::CString;
 
 use arca_core::types::Credential;
-use arca_core::FailureClass;
+use arca_core::{ArcaError, FailureClass, S3ErrorCode};
 
 use crate::handlers::admin_settings::effective_region;
 use crate::middleware::admin_auth::AuthenticatedCredential;
@@ -109,6 +109,22 @@ impl AdminError {
         }
     }
 
+    /// An error from a store call. A cluster write refusal (no write quorum,
+    /// cluster size exceeded) stays a 503 `ServiceUnavailable` with its own
+    /// message and failure class, as on the S3 API, so clients can tell a
+    /// read-only cluster from a fault and retry; anything else is a 500.
+    pub fn from_store(err: ArcaError) -> Self {
+        match err {
+            ArcaError::S3(e) if e.code == S3ErrorCode::ServiceUnavailable => Self {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                error: "ServiceUnavailable",
+                message: e.message,
+                failure_class: e.failure_class,
+            },
+            other => Self::internal(other.to_string()),
+        }
+    }
+
     /// The HTTP status this error answers with.
     pub fn status_code(&self) -> StatusCode {
         self.status
@@ -134,6 +150,12 @@ impl IntoResponse for AdminError {
             "message": self.message,
         });
         let mut response = (self.status, Json(body)).into_response();
+        if self.status == StatusCode::SERVICE_UNAVAILABLE {
+            // Same retry hint as the S3 API's 503s.
+            response
+                .headers_mut()
+                .insert(http::header::RETRY_AFTER, http::HeaderValue::from_static("5"));
+        }
         response.extensions_mut().insert(self.failure_class);
         response
     }
@@ -620,7 +642,7 @@ pub async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, A
         .metadata
         .get_stats()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let (disk_total, disk_available) = aggregate_disk_stats(&state.data_dirs);
 
@@ -643,7 +665,7 @@ async fn belongs_to_root(state: &AppState, cred: &Credential) -> Result<bool, Ad
         .users
         .get_user(&cred.user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .is_some_and(|u| u.is_root))
 }
 
@@ -658,7 +680,7 @@ async fn active_root_credential_count(state: &AppState) -> Result<usize, AdminEr
         .users
         .list_users()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .into_iter()
         .filter(|u| u.is_root)
         .map(|u| u.user_id)
@@ -668,7 +690,7 @@ async fn active_root_credential_count(state: &AppState) -> Result<usize, AdminEr
         .credentials
         .list_credentials()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .iter()
         .filter(|c| c.active && root_ids.contains(&c.user_id))
         .count())
@@ -682,7 +704,7 @@ pub async fn list_credentials(
         .credentials
         .list_credentials()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response: Vec<CredentialResponse> = creds
         .into_iter()
@@ -723,7 +745,7 @@ pub async fn create_credential(
         .credentials
         .put_credential(&cred)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response = CredentialResponse {
         access_key_id: cred.access_key_id,
@@ -747,7 +769,7 @@ pub async fn update_credential(
         .credentials
         .get_credential(&access_key_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Credential {access_key_id} not found")))?;
 
     if let Some(active) = body.active {
@@ -766,7 +788,7 @@ pub async fn update_credential(
                 .credentials
                 .count_active_credentials()
                 .await
-                .map_err(|e| AdminError::internal(e.to_string()))?;
+                .map_err(AdminError::from_store)?;
             if active_count <= 1 {
                 return Err(AdminError::conflict(
                     "Cannot deactivate the last active credential",
@@ -783,7 +805,7 @@ pub async fn update_credential(
             body.description.as_deref(),
         )
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -806,14 +828,14 @@ pub async fn delete_credential(
         .credentials
         .count_active_credentials()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     // Check if the target credential is active.
     let target = state
         .credentials
         .get_credential(&access_key_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     match &target {
         None => {
@@ -842,7 +864,7 @@ pub async fn delete_credential(
         .credentials
         .delete_credential(&access_key_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -977,7 +999,7 @@ pub async fn presign(
         .credentials
         .get_credential(&auth_cred.0.access_key_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::internal("credential not found"))?;
 
     let region = effective_region(&state, Some(&body.bucket)).await;
@@ -1036,6 +1058,37 @@ mod tests {
         assert_eq!(class(AdminError::unavailable("x")), Some(FailureClass::Notable));
         assert_eq!(class(AdminError::bad_gateway("x")), Some(FailureClass::Notable));
         assert_eq!(class(AdminError::unavailable("x").expected()), Some(FailureClass::Expected));
+    }
+
+    /// A write refused by the cluster gate is a 503 with the gate's message and
+    /// class (logged by the cluster state logger, not as a fault); any other
+    /// store error is still a 500.
+    #[test]
+    fn store_errors_keep_the_cluster_write_refusal() {
+        use arca_core::{ArcaError, S3Error, S3ErrorCode};
+        let refused = ArcaError::S3(
+            S3Error::with_message(
+                S3ErrorCode::ServiceUnavailable,
+                "cluster write quorum not available (1 eligible node(s), 2 required)",
+                "/",
+            )
+            .with_failure_class(FailureClass::Expected),
+        );
+        let e = AdminError::from_store(refused);
+        assert_eq!(e.status_code(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert!(e.message().contains("write quorum"));
+        let resp = e.into_response();
+        assert_eq!(resp.extensions().get::<FailureClass>().copied(), Some(FailureClass::Expected));
+        assert_eq!(
+            resp.headers().get(http::header::RETRY_AFTER).and_then(|v| v.to_str().ok()),
+            Some("5")
+        );
+
+        let other = AdminError::from_store(ArcaError::Internal("disk on fire".into()));
+        assert_eq!(other.status_code(), http::StatusCode::INTERNAL_SERVER_ERROR);
+        let resp = other.into_response();
+        assert_eq!(resp.extensions().get::<FailureClass>().copied(), Some(FailureClass::Unexpected));
+        assert!(resp.headers().get(http::header::RETRY_AFTER).is_none());
     }
 
     /// Default LB shape: ready unless draining or syncing (writable = true

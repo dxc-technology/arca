@@ -340,7 +340,7 @@ pub async fn update_setting(
         .server_config
         .set_server_config(&key, &body.value)
         .await
-        .map_err(|e| AdminError::internal(format!("Failed to save setting: {e}")))?;
+        .map_err(AdminError::from_store)?;
 
     // Apply log level change immediately.
     if key == "log_level" {
@@ -385,7 +385,7 @@ pub async fn delete_setting(
         .server_config
         .delete_server_config(&key)
         .await
-        .map_err(|e| AdminError::internal(format!("Failed to delete setting: {e}")))?;
+        .map_err(AdminError::from_store)?;
 
     // Revert log level to config file value or default.
     if key == "log_level" {

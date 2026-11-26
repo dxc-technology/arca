@@ -66,7 +66,7 @@ pub async fn archive(
         .metadata
         .head_bucket(&body.bucket)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     if bucket_exists.is_none() {
         return Err(AdminError::not_found(format!(
             "Bucket '{}' not found",
@@ -81,7 +81,7 @@ pub async fn archive(
             .metadata
             .get_object(&body.bucket, key)
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         match record {
             Some(r) => entries.push(r),
             None => {

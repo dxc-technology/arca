@@ -66,12 +66,12 @@ pub(crate) async fn audit_page(
     let entries = audit_store
         .list_audit_entries(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let total = audit_store
         .count_audit_entries(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(serde_json::json!({
         "entries": entries,
@@ -112,7 +112,7 @@ pub async fn audit_stats(
     let total = audit_store
         .count_audit_entries(&AuditFilter::default())
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(Json(serde_json::json!({
         "total_entries": total,
@@ -147,7 +147,7 @@ pub async fn clear_audit(
     let deleted = audit_store
         .purge_audit_entries(cutoff)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok((
         StatusCode::OK,
@@ -186,7 +186,7 @@ pub(crate) async fn metrics_history_page(
     let snapshots = metrics_store
         .list_metrics_snapshots(from, to, limit)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(serde_json::json!({
         "snapshots": snapshots,

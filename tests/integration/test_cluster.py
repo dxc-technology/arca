@@ -645,6 +645,50 @@ def test_write_rejected_without_quorum():
 
 
 @pytest.mark.cluster_one_third
+def test_delete_objects_rejected_without_quorum():
+    """DeleteObjects is refused as a whole with 503, like DeleteObject: never
+    a 200 carrying one error per key, which clients that only check the status
+    (and the console) took for a success."""
+    node1 = _s3(NODES[1])
+    with pytest.raises(ClientError) as exc:
+        node1.delete_objects(
+            Bucket=FAILOVER_BUCKET,
+            Delete={"Objects": [{"Key": FAILOVER_KEY}], "Quiet": True},
+        )
+    assert _status_code(exc.value) == 503
+    assert exc.value.response["Error"]["Code"] == "ServiceUnavailable"
+    assert node1.get_object(Bucket=FAILOVER_BUCKET, Key=FAILOVER_KEY)["Body"].read() == FAILOVER_BODY
+
+
+@pytest.mark.cluster_one_third
+def test_notification_removal_rejected_without_quorum():
+    """An empty notification configuration (the S3 way to remove it) is a
+    write: refused with 503, not a 200 that removed nothing."""
+    node1 = _s3(NODES[1])
+    with pytest.raises(ClientError) as exc:
+        node1.put_bucket_notification_configuration(
+            Bucket=FAILOVER_BUCKET, NotificationConfiguration={}
+        )
+    assert _status_code(exc.value) == 503
+
+
+@pytest.mark.cluster_one_third
+def test_admin_write_rejected_without_quorum():
+    """An admin write refused by the write gate is a 503 ServiceUnavailable
+    with the gate's message, not a 500 InternalError."""
+    with pytest.raises(requests.HTTPError) as exc:
+        _admin_request(
+            "POST", NODES[1], "/admin/users",
+            {"username": f"no-quorum-{uuid.uuid4().hex[:8]}", "description": ""},
+        )
+    resp = exc.value.response
+    assert resp.status_code == 503
+    assert resp.json()["error"] == "ServiceUnavailable"
+    assert "write quorum" in resp.json()["message"]
+    assert resp.headers.get("Retry-After") == "5"
+
+
+@pytest.mark.cluster_one_third
 def test_read_still_works_without_quorum():
     """Reads are never gated by quorum — a previously written object still reads."""
     node1 = _s3(NODES[1])

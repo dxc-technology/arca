@@ -55,7 +55,7 @@
 
 use std::sync::Arc;
 
-use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp, WriteGate};
+use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::store::{
     CompletedUpload, ControlTombstoneStore, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition,
@@ -73,46 +73,13 @@ use futures_util::future::join_all;
 use crate::cluster::client::ClusterClient;
 
 /// Maps the cluster admission gate to the client-facing `503` (shared by the
-/// metadata and control-plane decorators). [`WriteGate::NoQuorum`] is the
+/// metadata and control-plane decorators). `WriteGate::NoQuorum` is the
 /// fail-fast half of the write quorum (decision H1; the ACK count is
-/// authoritative); [`WriteGate::SizeExceeded`] is the fail-closed
+/// authoritative); `WriteGate::SizeExceeded` is the fail-closed
 /// cluster-size guard (decision H6) against an over-sized membership — two
-/// distinct, actionable messages.
-///
-/// Both refusals are [`FailureClass::Expected`]: the cluster state logger
-/// reports the episode (with the count of refused writes), so the access log
-/// keeps each refused request at DEBUG.
+/// distinct, actionable messages, built by [`ClusterState::check_write_gate`].
 pub(crate) fn check_write_gate(cluster: &ClusterState) -> Result<(), ArcaError> {
-    match cluster.write_gate() {
-        WriteGate::Open => Ok(()),
-        WriteGate::NoQuorum { eligible, quorum } => {
-            cluster.record_write_refused_no_quorum();
-            Err(ArcaError::S3(
-                S3Error::with_message(
-                    S3ErrorCode::ServiceUnavailable,
-                    format!(
-                        "cluster write quorum not available ({eligible} eligible node(s), \
-                         {quorum} required)"
-                    ),
-                    "/",
-                )
-                .with_failure_class(FailureClass::Expected),
-            ))
-        }
-        WriteGate::SizeExceeded {
-            eligible,
-            cluster_size,
-        } => Err(ArcaError::S3(S3Error::with_message(
-            S3ErrorCode::ServiceUnavailable,
-            format!(
-                "cluster size exceeded: {eligible} eligible nodes for cluster_size = \
-                 {cluster_size} — writes are refused to prevent split-brain; remove the \
-                 extra node(s) or resize the cluster (see the HA guide runbook)"
-            ),
-            "/",
-        )
-        .with_failure_class(FailureClass::Expected))),
-    }
+    cluster.check_write_gate()
 }
 
 /// Metadata store decorator that replicates object-table mutations to peers

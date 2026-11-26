@@ -142,7 +142,7 @@ pub async fn export(
             .server_config
             .list_server_config()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         let map: HashMap<String, String> = pairs
             .into_iter()
             .filter(|(k, _)| !arca_core::cluster::is_node_local_server_config_key(k))
@@ -157,7 +157,7 @@ pub async fn export(
             .users
             .list_users()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         let exported_users: Vec<ExportedUser> = users
             .iter()
             .map(|u| ExportedUser {
@@ -175,7 +175,7 @@ pub async fn export(
             .teams
             .list_teams()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         let mut exported_teams = Vec::new();
         for t in &teams {
             let members = state
@@ -198,7 +198,7 @@ pub async fn export(
             .grants
             .list_grants()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         let mut exported_grants = Vec::new();
         for g in &grants {
             // Collect user IDs attached to this grant.
@@ -245,7 +245,7 @@ pub async fn export(
             .credentials
             .list_credentials()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         let exported_creds: Vec<ExportedCredential> = creds
             .into_iter()
             .map(|c| ExportedCredential {
@@ -270,7 +270,7 @@ pub async fn export(
             .metadata
             .list_buckets()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         let exported_buckets: Vec<ExportedBucket> = buckets
             .iter()
             .map(|b| ExportedBucket {
@@ -288,7 +288,7 @@ pub async fn export(
             .metadata
             .list_buckets()
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
 
         let mut configs: HashMap<String, serde_json::Value> = HashMap::new();
         for bucket in &buckets {

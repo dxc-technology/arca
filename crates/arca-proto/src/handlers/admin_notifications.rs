@@ -53,12 +53,12 @@ pub(crate) async fn notification_events_page(
     let entries = store
         .list_notification_events(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let total = store
         .count_notification_events(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(serde_json::json!({
         "entries": entries,
@@ -107,7 +107,7 @@ pub async fn count_notification_events(
     let total = store
         .count_notification_events(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(Json(serde_json::json!({ "count": total })))
 }
@@ -139,7 +139,7 @@ pub async fn clear_notification_events(
     let deleted = store
         .purge_notification_events(cutoff)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(Json(serde_json::json!({
         "deleted": deleted,

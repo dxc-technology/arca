@@ -70,12 +70,12 @@ pub(crate) async fn journal_page(
         .replication_store
         .list_journal(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let total = state
         .replication_store
         .count_journal(&filter)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(serde_json::json!({
         "entries": entries,
         "total": total,
@@ -111,7 +111,7 @@ pub async fn list_credentials(
         .server_config
         .list_server_config()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let mut creds: Vec<serde_json::Value> = entries
         .into_iter()
         .filter_map(|(k, v)| {
@@ -165,7 +165,7 @@ pub async fn upsert_credential(
         .server_config
         .set_server_config(&key, &value)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "name": name, "access_key_id": body.access_key_id })))
 }
 
@@ -178,7 +178,7 @@ pub async fn credential_usage(
 ) -> Result<impl IntoResponse, AdminError> {
     let usage = find_rules_referencing(&state, &name)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "rules": usage })))
 }
 
@@ -196,13 +196,13 @@ pub async fn delete_credential(
 ) -> Result<impl IntoResponse, AdminError> {
     let disabled = disable_rules_referencing(&state, &name)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let key = format!("{CREDENTIAL_PREFIX}{name}");
     state
         .server_config
         .delete_server_config(&key)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "rules_disabled": disabled })))
 }
 
@@ -310,7 +310,7 @@ pub async fn retry_entry(
         .replication_store
         .update_status(&id, "pending", 0, None, chrono::Utc::now())
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(http::StatusCode::NO_CONTENT.into_response())
 }
 
@@ -367,7 +367,7 @@ pub async fn test_destination(
                 .server_config
                 .get_server_config(&key)
                 .await
-                .map_err(|e| AdminError::internal(e.to_string()))?
+                .map_err(AdminError::from_store)?
                 .ok_or_else(|| AdminError::bad_request(format!(
                     "credential ref '{}' not found",
                     r
@@ -550,6 +550,6 @@ pub async fn clear_journal(
         .replication_store
         .purge_all_older(cutoff)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     Ok(Json(serde_json::json!({ "deleted": deleted })))
 }

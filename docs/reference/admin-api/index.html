@@ -2833,6 +2833,11 @@
 <td>500</td>
 <td>Server-side error</td>
 </tr>
+<tr>
+<td><code>ServiceUnavailable</code></td>
+<td>503</td>
+<td>The cluster refuses writes (no write quorum, or cluster size exceeded): the <code>message</code> says which. Carries <code>Retry-After: 5</code>; reads keep working</td>
+</tr>
 </tbody>
 </table>
 <hr />

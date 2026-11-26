@@ -58,7 +58,7 @@ pub async fn list_users(
         .users
         .list_users()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let all_creds = state.credentials.list_credentials().await.unwrap_or_default();
     let mut response = Vec::new();
@@ -96,7 +96,7 @@ pub async fn create_user(
         .users
         .get_user_by_username(&username)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .is_some()
     {
         return Err(AdminError::conflict(format!(
@@ -116,7 +116,7 @@ pub async fn create_user(
         .users
         .put_user(&user)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response = UserResponse {
         user_id: user.user_id,
@@ -138,27 +138,27 @@ pub async fn get_user(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     let creds = state
         .credentials
         .list_credentials()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let cred_count = creds.iter().filter(|c| c.user_id == user_id).count();
 
     let teams = state
         .teams
         .list_user_teams(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let grants = state
         .grants
         .list_user_grants(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(Json(UserDetailResponse {
         user_id: user.user_id,
@@ -183,7 +183,7 @@ pub async fn update_user(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     if user.is_root {
@@ -202,7 +202,7 @@ pub async fn update_user(
             if e.to_string().contains("UNIQUE") {
                 AdminError::conflict("Username already exists")
             } else {
-                AdminError::internal(e.to_string())
+                AdminError::from_store(e)
             }
         })?;
 
@@ -218,7 +218,7 @@ pub async fn delete_user(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     if user.is_root {
@@ -230,7 +230,7 @@ pub async fn delete_user(
         .credentials
         .list_credentials()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
     let has_creds = creds.iter().any(|c| c.user_id == user_id);
     if has_creds {
         return Err(AdminError::conflict(
@@ -242,7 +242,7 @@ pub async fn delete_user(
         .users
         .delete_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -257,14 +257,14 @@ pub async fn list_user_credentials(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     let all_creds = state
         .credentials
         .list_credentials()
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let creds: Vec<serde_json::Value> = all_creds
         .into_iter()
@@ -293,7 +293,7 @@ pub async fn create_user_credential(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     // Generate credential, using user-provided keys when available. The
@@ -323,7 +323,7 @@ pub async fn create_user_credential(
             if e.to_string().contains("UNIQUE") {
                 AdminError::conflict("Access key ID already exists")
             } else {
-                AdminError::internal(e.to_string())
+                AdminError::from_store(e)
             }
         })?;
 
@@ -361,14 +361,14 @@ pub async fn list_user_grants(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     let grants = state
         .grants
         .list_user_grants(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response: Vec<serde_json::Value> = grants
         .into_iter()
@@ -393,14 +393,14 @@ pub async fn list_user_teams(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     let teams = state
         .teams
         .list_user_teams(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let response: Vec<serde_json::Value> = teams
         .into_iter()
@@ -425,21 +425,21 @@ pub async fn attach_user_grant(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     state
         .grants
         .get_grant(&grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("Grant {grant_id} not found")))?;
 
     state
         .grants
         .attach_to_user(&user_id, &grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -453,7 +453,7 @@ pub async fn detach_user_grant(
         .grants
         .detach_from_user(&user_id, &grant_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     if detached {
         Ok(StatusCode::NO_CONTENT)
@@ -471,7 +471,7 @@ pub async fn effective_user_grants(
         .users
         .get_user(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?
+        .map_err(AdminError::from_store)?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
     // Get direct grants
@@ -479,14 +479,14 @@ pub async fn effective_user_grants(
         .grants
         .list_user_grants(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     // Get team grants
     let teams = state
         .teams
         .list_user_teams(&user_id)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(AdminError::from_store)?;
 
     let mut team_grants = Vec::new();
     for team in &teams {
@@ -494,7 +494,7 @@ pub async fn effective_user_grants(
             .grants
             .list_team_grants(&team.team_id)
             .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
+            .map_err(AdminError::from_store)?;
         for g in grants {
             team_grants.push(serde_json::json!({
                 "grant_id": g.grant_id,
