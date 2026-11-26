@@ -3035,7 +3035,7 @@
 <tr>
 <td><code>unreached_endpoints</code></td>
 <td>string[]?</td>
-<td>Discovery candidates (e.g. static seeds) that have not answered since this node started. Membership is kept in memory, so after a restart a member that is still down is known only by its endpoint; it is not in <code>nodes</code> and counts for nothing until it answers. Omitted when empty.</td>
+<td>Discovery candidates (e.g. static seeds) that have not answered since this node started, listed after two consecutive failed probes (so this node's own seed entry, whose first probe at startup fails, never appears). Membership is kept in memory, so after a restart a member that is still down is known only by its endpoint; it is not in <code>nodes</code> and counts for nothing until it answers. Omitted when empty.</td>
 </tr>
 <tr>
 <td><code>config_aligned</code></td>

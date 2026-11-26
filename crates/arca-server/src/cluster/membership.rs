@@ -452,13 +452,23 @@ fn contact_config_ok(
 /// tombstone-GC liveness guard and the admin
 /// view reason about how long it has been unseen) and dropping its disk stats
 /// (stale free space must not gate writes).
-/// Candidates that never answered since startup: no identity learned and not
-/// this node. Shown by the console as members not seen since the restart;
-/// they count for nothing else until they answer.
+/// Candidates that never answered since startup: no identity learned, not
+/// this node, and at least [`DEAD_AFTER_FAILURES`] consecutive failed probes.
+/// Shown by the console as members not seen since the restart; they count for
+/// nothing else until they answer.
+///
+/// The failure threshold is what keeps this node's own seed entry out: the
+/// membership loop starts before the HTTP server listens, so the very first
+/// self-probe fails and only the next one identifies self. Waiting for the
+/// same threshold that turns a known peer dead hides that startup blip without
+/// relying on `local_endpoint`, which is unknown until a self-probe succeeds
+/// and absent altogether when the seeds do not list this node.
 fn unreached_endpoints(known: &BTreeMap<String, ProbeState>) -> Vec<String> {
     known
         .iter()
-        .filter(|(_, ps)| ps.node_id.is_none() && !ps.is_self)
+        .filter(|(_, ps)| {
+            ps.node_id.is_none() && !ps.is_self && ps.consecutive_failures >= DEAD_AFTER_FAILURES
+        })
         .map(|(endpoint, _)| endpoint.clone())
         .collect()
 }
@@ -814,6 +824,38 @@ mod tests {
         let me = ProbeState { is_self: true, ..ProbeState::default() };
         known.insert("http://arca-1:9000".into(), me);
 
+        assert_eq!(unreached_endpoints(&known), vec!["http://arca-3:9000".to_string()]);
+    }
+
+    #[test]
+    fn own_seed_entry_is_never_listed_as_unreached() {
+        // The membership loop starts before the HTTP server listens: the
+        // first self-probe fails, the second one identifies self.
+        let mut known: BTreeMap<String, ProbeState> = BTreeMap::new();
+        known.insert("http://arca-1:9000".into(), ProbeState::default());
+        assert!(unreached_endpoints(&known).is_empty(), "not probed yet");
+
+        known.get_mut("http://arca-1:9000").unwrap().consecutive_failures = 1;
+        assert!(
+            unreached_endpoints(&known).is_empty(),
+            "a single failed probe (the startup self-probe) must not list the endpoint"
+        );
+
+        let me = known.get_mut("http://arca-1:9000").unwrap();
+        me.consecutive_failures = 0;
+        me.is_self = true;
+        assert!(unreached_endpoints(&known).is_empty());
+    }
+
+    #[test]
+    fn candidate_is_unreached_after_the_dead_threshold() {
+        let mut known: BTreeMap<String, ProbeState> = BTreeMap::new();
+        let mut down = ProbeState::default();
+        down.consecutive_failures = DEAD_AFTER_FAILURES - 1;
+        known.insert("http://arca-3:9000".into(), down);
+        assert!(unreached_endpoints(&known).is_empty());
+
+        known.get_mut("http://arca-3:9000").unwrap().consecutive_failures = DEAD_AFTER_FAILURES;
         assert_eq!(unreached_endpoints(&known), vec!["http://arca-3:9000".to_string()]);
     }
 

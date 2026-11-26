@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A restarted node no longer reports itself as an unreached member.** Membership starts before the HTTP server listens, so a node's first probe of its own seed endpoint failed and, for one membership tick, `unreached_endpoints` listed that endpoint: the node logged "waiting for the peer at <its own endpoint>" and the console showed an "unknown node" offline row for about 3 seconds. A candidate is now listed only after two consecutive failed probes, the same threshold that turns a known peer dead.
+
 ## [0.36.0] — 2026-11-25
 
 ### Security
