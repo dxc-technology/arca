@@ -153,7 +153,7 @@ For a workaround or shortcut: add a `TECHDEBT(TD-XXX)` comment at the site, an e
 
 ## Test Coverage Table
 
-Update the "Test Coverage" table in `README.md` whenever test counts change. After `bin/s3-tests`, read `s3-tests/summary.json` and update the Ceph row with its numbers (the badge SVG updates itself).
+Update the "Test Coverage" table in `README.md` whenever test counts change. Rows are groups of `bin/test` modes: unit; S3 API (`integration`, `virtual-host`, `presigned`, `compression`); access control and admin (RBAC, monitoring, export/import, maintenance, all in `integration`); encryption and TLS (`encryption`, `per-bucket-encryption`, `ssec`, `kms`, `recrypt`, `tls`, `tls-permissions`); storage backends (`postgres`, `migrate-db`, `migrate-topology`); cluster and replication; notifications and connectors; shell libraries and tooling (`scripts`, `s3-report`, `perf-report`). Add a new suite to the row of its mode, then recompute the bold totals from the rows. After `bin/s3-tests`, read `s3-tests/summary.json` and update the Ceph row with its numbers (the badge SVG updates itself). The README section has a hidden comment with the same steps.
 
 ## Versioning and Releases
 
