@@ -13,7 +13,8 @@ set -euo pipefail
 #   bin/release [vX.Y.Z]            Preview, ask y/n, publish (default tag: the
 #                                   newest release tag reachable from HEAD)
 #   bin/release vX.Y.Z --dry-run    Preview only, publish nothing
-#   bin/release vX.Y.Z --yes        Publish without asking (after a dry run)
+#   bin/release vX.Y.Z --yes        Publish without asking and without opening
+#                                   the preview again (after a dry run)
 #   bin/release vX.Y.Z --without-binaries
 #                                   Source archives only, for tags published
 #                                   before the pipeline built binaries (<= v0.31.0)
@@ -36,7 +37,7 @@ while [[ $# -gt 0 ]]; do
         --yes) YES=true; shift ;;
         --without-binaries) BINARIES=false; shift ;;
         -h|--help)
-            sed -n '4,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '4,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         v*) TAG="$1"; shift ;;
@@ -113,10 +114,14 @@ if $BINARIES; then
 else
     echo "Assets:  none (source archives only, added by GitHub)"
 fi
-if command -v open >/dev/null 2>&1; then
-    open "$PREVIEW"
-elif command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$PREVIEW" >/dev/null 2>&1 || true
+# --yes follows a dry run whose preview was already approved: the notes and
+# assets come from the tag and its run, so a second preview would be identical.
+if ! $YES; then
+    if command -v open >/dev/null 2>&1; then
+        open "$PREVIEW"
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$PREVIEW" >/dev/null 2>&1 || true
+    fi
 fi
 
 if $DRY_RUN; then

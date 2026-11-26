@@ -152,7 +152,11 @@ for the tag:
 ```bash
 bin/release vX.Y.Z --dry-run    # preview only
 bin/release vX.Y.Z              # preview, then asks y/n and publishes
+bin/release vX.Y.Z --yes        # publishes without asking, after an approved dry run
 ```
+
+`--yes` does not open the preview again: the notes come from the tag and the
+binaries from its run, so it would be identical to the one already approved.
 
 The notes are never written by hand. `bin/release` (logic in
 `bin/lib/release.sh`, unit-tested by `bin/test scripts`) derives them from the

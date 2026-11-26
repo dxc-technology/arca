@@ -143,6 +143,12 @@ case "$1 $2" in
 esac
 MOCK
     chmod +x "$bin/gh"
+    # Browser openers: record the preview they were asked to show.
+    OPEN_LOG="$(mktemp)"
+    export OPEN_LOG
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >> "$OPEN_LOG"\n' > "$bin/open"
+    cp "$bin/open" "$bin/xdg-open"
+    chmod +x "$bin/open" "$bin/xdg-open"
     PATH="$bin:$PATH"
 }
 
@@ -252,6 +258,20 @@ test_release_yes_creates_it_on_the_existing_tag() {
     log="$(cat "$GH_LOG")"
     assert_contains "$log" $'release\ncreate\nv0.3.0\n--repo\ndxc-technology/arca\n--verify-tag\n--title\nv0.3.0\n--notes-file' &&
     assert_contains "$log" $'\n--latest\n'
+}
+
+test_release_dry_run_opens_the_preview() {
+    new_repo v0.3.0
+    mock_gh
+    bash "$RELEASE" v0.3.0 --dry-run >/dev/null || return 1
+    assert_contains "$(cat "$OPEN_LOG")" "preview.html"
+}
+
+test_release_yes_does_not_open_the_preview_again() {
+    new_repo v0.3.0
+    mock_gh
+    bash "$RELEASE" v0.3.0 --yes >/dev/null || return 1
+    [[ ! -s "$OPEN_LOG" ]] || { echo "preview opened: $(cat "$OPEN_LOG")"; return 1; }
 }
 
 test_release_asks_and_stops_on_no() {
