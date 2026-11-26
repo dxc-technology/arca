@@ -1267,7 +1267,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0361-2026-11-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.36.1 — 2026-11-26
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.36.1 — 2026-11-26">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3582,7 +3593,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0361-2026-11-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.36.1 — 2026-11-26
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.36.1 — 2026-11-26">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -5851,7 +5873,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.36.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.36.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0361-2026-11-26"><a href="https://github.com/dxc-technology/arca/compare/v0.36.0...v0.36.1">0.36.1</a> — 2026-11-26<a class="headerlink" href="#0361-2026-11-26" title="Permanent link">&para;</a></h2>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>A restarted node no longer reports itself as an unreached member.</strong> Membership starts before the HTTP server listens, so a node's first probe of its own seed endpoint failed and, for one membership tick, <code>unreached_endpoints</code> listed that endpoint: the node logged "waiting for the peer at <its own endpoint>" and the console showed an "unknown node" offline row for about 3 seconds. A candidate is now listed only after two consecutive failed probes, the same threshold that turns a known peer dead.</li>
