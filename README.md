@@ -192,17 +192,17 @@ How to update this table (keep it in sync with AGENTS.md, "Test Coverage Table")
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 1448 | `bin/test unit`: arca-auth 47, arca-core 289, arca-proto 231, arca-server 413, arca-storage 467, plus 1 integration test (`tests/open_files_limit.rs`) |
+| Unit tests (Rust) | 1452 | `bin/test unit`: arca-auth 47, arca-core 289, arca-proto 232, arca-server 413, arca-storage 470, plus 1 integration test (`tests/open_files_limit.rs`) |
 | S3 API integration | 570 | `bin/test integration`, `virtual-host`, `presigned`, `compression`: boto3 and MinIO clients, multipart, copy, versioning, tagging, lifecycle, Object Lock, conditional writes, checksums and body integrity, aws-chunked signatures, virtual-hosted style, presigned URLs, compression |
 | Access control and admin | 141 | `bin/test integration`: RBAC and its side doors, monitoring and audit, export/import, maintenance jobs |
 | Encryption and TLS | 72 | `bin/test encryption`, `per-bucket-encryption`, `ssec`, `kms`, `recrypt`, `tls`, `tls-permissions`: SSE-S3, SSE-C, SSE-KMS, re-encryption, HTTPS and certificate permissions |
 | Storage backends | 33 | `bin/test postgres`, `migrate-db`, `migrate-topology`: PostgreSQL metadata, SQLite to PostgreSQL migration, single node to cluster migration |
-| Cluster and replication | 67 | `bin/test cluster`, `replication`: 3-node HA (quorum, failover, partitions, anti-entropy, repair) and bucket replication |
+| Cluster and replication | 72 | `bin/test cluster`, `replication`: 3-node HA (quorum, failover, partitions, anti-entropy, repair) and bucket replication |
 | Notifications and connectors | 105 | `bin/test notifications`, `connectors`: event delivery and the 12 connectors |
-| Shell libraries and tooling | 301 | `bin/test scripts`, `s3-report`, `perf-report`: `bin/lib/*.sh` with `docker` and `gh` mocked, Ceph report and perf suite tooling |
-| **Arca tests** | **2,737** | **All tests written for this project** |
+| Shell libraries and tooling | 303 | `bin/test scripts`, `s3-report`, `perf-report`: `bin/lib/*.sh` with `docker` and `gh` mocked, Ceph report and perf suite tooling |
+| **Arca tests** | **2,748** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 383 pass, 351 fail, 91 skip, 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **3,562** | |
+| **Total** | **3,573** | |
 
 ## License
 
