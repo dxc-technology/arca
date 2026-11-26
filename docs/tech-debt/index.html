@@ -1628,6 +1628,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>none yet: needs a cluster test with <code>peer_prune_days</code> &gt; <code>tombstone_grace_days</code> and a survivor restarted during the peer's downtime</td>
 <td><code>crates/arca-server/src/cluster/membership.rs</code>, <code>crates/arca-core/src/cluster.rs</code></td>
 </tr>
+<tr>
+<td>TD-059</td>
+<td>DeleteBucket leaves the bucket's children behind</td>
+<td><code>delete_bucket</code> removes the bucket row and its tags only: <code>bucket_config</code> (versioning, Object Lock, lifecycle, encryption, compression, replication, notifications) and the <code>multipart_uploads</code>/<code>parts</code> rows stay, and no foreign key cascades them. A bucket recreated with the same name inherits all of them, a lifecycle expiration rule included, on a single node as in a cluster. Two cluster gaps sit next to it. The emptiness check before DeleteBucket is local only: a node that missed a PutObject fan-out (allowed by decision H1) can delete a bucket the peers still hold live objects in, and the peers apply the delete without checking, keeping orphan rows that reappear if the bucket is recreated. And once config is cleared, an unversioned PutObject on a recreated bucket would delete the previous generation's per-version tombstones (<code>DELETE FROM objects WHERE bucket AND key</code>), letting a returning node re-insert an old version</td>
+<td>Scope a bucket's children to its generation. On a single node, delete them with the bucket. In a cluster, local cleanup is not enough, since a returning node pushes stale config rows back through the control-plane merge once the bucket name is alive again: either write per-config-key control tombstones on DeleteBucket or drop children older than the bucket's <code>created_at</code> (clock-skew sensitive). Ship with it the tombstone-preserving unversioned put (keep tombstones of non-null versions) and a cluster-wide emptiness check (ask the eligible peers before deleting). Needs a design decision</td>
+<td>none yet: single-node and cluster tests for delete-then-recreate inheriting nothing, a cluster test with a node down across the delete and the recreate, and a DeleteBucket refused while a peer still holds an object</td>
+<td><code>crates/arca-storage/src/sqlite/metadata.rs</code>, <code>crates/arca-storage/src/pg/metadata.rs</code>, <code>crates/arca-server/src/cluster/cluster_meta.rs</code>, <code>crates/arca-server/src/cluster/anti_entropy.rs</code>, <code>crates/arca-core/src/cluster.rs</code>, <code>crates/arca-proto/src/handlers/bucket.rs</code></td>
+</tr>
 </tbody>
 </table>
 <hr />

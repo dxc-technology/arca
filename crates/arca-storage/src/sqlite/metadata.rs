@@ -334,6 +334,8 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("head_bucket: {e}")))
     }
 
+    // TECHDEBT(TD-059): config and multipart rows survive the bucket, so a
+    // bucket recreated with the same name inherits them.
     async fn delete_bucket(&self, name: &str) -> Result<bool, ArcaError> {
         let name = name.to_string();
         self.conn
@@ -354,8 +356,15 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 // EXISTS stops at the first row; COUNT(*) would read them all.
+                // Cluster delete tombstones do not count: they are not objects, and
+                // they stay until tombstone GC (the whole grace, longer while the
+                // liveness guard holds), so counting them kept an emptied cluster
+                // bucket from being deleted. DeleteBucket must leave them in place:
+                // they are what stops a returning node's stale live copy from being
+                // re-inserted by apply_remote_object, which would resurrect the object
+                // if the bucket is recreated. Delete markers are objects and count.
                 let any: bool = conn.query_row_cached(
-                    "SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = ?1)",
+                    "SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = ?1 AND is_tombstone = 0)",
                     params![name],
                     |row| row.get(0),
                 )?;
@@ -4347,6 +4356,64 @@ mod tests {
         let position = VersionPosition::of(&newer);
         let rows = store.list_object_versions_from("b", None, Some("k"), Some(&position), 10).await.unwrap();
         assert_eq!(blob_ids(&rows), ["k-null"]);
+    }
+
+    #[tokio::test]
+    async fn cluster_tombstones_do_not_keep_a_bucket_non_empty() {
+        let store = test_store().await;
+        store.set_cluster_mode(true);
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        store.delete_object("b", "k").await.unwrap();
+
+        assert!(store.bucket_is_empty("b").await.unwrap(), "only a tombstone is left");
+        assert!(store.delete_bucket("b").await.unwrap());
+        // DeleteBucket keeps the tombstone: it must still reach the peers.
+        let rows = store.list_rows_changed_since(0, 100).await.unwrap();
+        assert!(
+            rows.iter().any(|(_, r)| r.bucket == "b" && r.key == "k" && r.is_tombstone),
+            "the tombstone outlives the bucket"
+        );
+    }
+
+    #[tokio::test]
+    async fn cluster_versioned_bucket_is_empty_once_every_version_is_gone() {
+        let store = test_store().await;
+        store.set_cluster_mode(true);
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let mut r = make_record("b", "k");
+        r.version_id = Some("v1".into());
+        store.put_object(&r).await.unwrap();
+        store.delete_object("b", "k").await.unwrap(); // delete marker on top
+
+        assert!(!store.bucket_is_empty("b").await.unwrap(), "a delete marker is an object");
+        let versions = store.list_object_versions_from("b", Some("k"), None, None, 10).await.unwrap();
+        assert_eq!(versions.len(), 2);
+        for v in &versions {
+            let vid = v.version_id.clone().expect("versioned rows have an id");
+            store.delete_object_version("b", "k", &vid).await.unwrap();
+        }
+        assert!(store.bucket_is_empty("b").await.unwrap(), "only tombstones are left");
+    }
+
+    #[tokio::test]
+    async fn cluster_tombstone_stops_a_stale_copy_resurrecting_in_a_recreated_bucket() {
+        let store = test_store().await;
+        store.set_cluster_mode(true);
+        store.create_bucket("b").await.unwrap();
+        let mut stale = make_record("b", "k");
+        stale.last_modified = chrono::Utc::now() - chrono::Duration::seconds(60);
+        store.put_object(&stale).await.unwrap();
+        store.delete_object("b", "k").await.unwrap();
+        assert!(store.delete_bucket("b").await.unwrap());
+        store.create_bucket("b").await.unwrap();
+
+        // A node that missed both deletes comes back with its live copy.
+        store.apply_remote_object(&stale).await.unwrap();
+
+        assert!(store.get_object("b", "k").await.unwrap().is_none(), "the object resurrected");
+        assert!(store.bucket_is_empty("b").await.unwrap());
     }
 
     #[tokio::test]

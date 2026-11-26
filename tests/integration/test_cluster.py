@@ -286,6 +286,56 @@ def _wait_bucket(client, bucket, timeout=90):
 
 # ── Phase: all 3 nodes up ─────────────────────────────────────────────────────
 
+def _wait_bucket_gone(client, bucket, timeout=30):
+    """Poll until HeadBucket answers 404, or fail after `timeout`."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            client.head_bucket(Bucket=bucket)
+        except ClientError as e:
+            if _status_code(e) == 404:
+                return
+        time.sleep(1)
+    pytest.fail(f"bucket {bucket} still exists after {timeout}s")
+
+
+@pytest.mark.cluster_full
+def test_emptied_bucket_can_be_deleted():
+    """Deleting the last object leaves a tombstone on every node (kept for the
+    grace period); it must not keep the bucket from being deleted."""
+    lb = _s3(LB)
+    bucket = f"cl-empty-{uuid.uuid4().hex[:10]}"
+    _ensure_bucket(lb, bucket)
+    lb.put_object(Bucket=bucket, Key="k", Body=b"x")
+    for n in (1, 2, 3):
+        _wait_object(_s3(NODES[n]), bucket, "k", b"x", timeout=30)
+    lb.delete_object(Bucket=bucket, Key="k")
+    lb.delete_bucket(Bucket=bucket)
+    for n in (1, 2, 3):
+        _wait_bucket_gone(_s3(NODES[n]), bucket)
+
+
+@pytest.mark.cluster_full
+def test_emptied_versioned_bucket_can_be_deleted():
+    """Same for a versioned bucket once every version and delete marker is
+    deleted by version id; with a delete marker left it is still not empty."""
+    lb = _s3(LB)
+    bucket = f"cl-empty-v-{uuid.uuid4().hex[:10]}"
+    _ensure_bucket(lb, bucket)
+    lb.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
+    lb.put_object(Bucket=bucket, Key="k", Body=b"x")
+    lb.delete_object(Bucket=bucket, Key="k")
+    with pytest.raises(ClientError) as exc:
+        lb.delete_bucket(Bucket=bucket)
+    assert exc.value.response["Error"]["Code"] == "BucketNotEmpty"
+    listing = lb.list_object_versions(Bucket=bucket)
+    for entry in listing.get("Versions", []) + listing.get("DeleteMarkers", []):
+        lb.delete_object(Bucket=bucket, Key=entry["Key"], VersionId=entry["VersionId"])
+    lb.delete_bucket(Bucket=bucket)
+    for n in (1, 2, 3):
+        _wait_bucket_gone(_s3(NODES[n]), bucket)
+
+
 @pytest.mark.cluster_full
 def test_write_replicates_to_all_nodes():
     """A write through the LB becomes readable on every node (full replication)."""

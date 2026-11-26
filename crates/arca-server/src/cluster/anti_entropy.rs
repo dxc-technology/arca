@@ -483,8 +483,8 @@ async fn reconcile_peer_control(
         .map_err(|e| ClusterError::Serde(format!("apply control merge: {e}")))?;
     // Buckets — and their children, bucket config/tags — plus the multipart
     // rows go via the (cache-aware) metadata store. Order: bucket upserts
-    // before their children's, deletes last (delete_bucket cascades config and
-    // tags locally; delete_multipart_upload cascades part rows).
+    // before their children's, deletes last (delete_bucket cascades tags
+    // locally, not config: TD-059; delete_multipart_upload cascades part rows).
     for bucket in &plan.upsert_buckets {
         if let Err(e) = metadata.apply_remote_bucket(bucket).await {
             tracing::warn!(bucket = %bucket.name, error = %e, "anti-entropy: bucket upsert failed");

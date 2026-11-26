@@ -1044,6 +1044,8 @@ impl MetadataStore for PgStore {
         Ok(row.as_ref().map(row_to_bucket_info))
     }
 
+    // TECHDEBT(TD-059): config and multipart rows survive the bucket, so a
+    // bucket recreated with the same name inherits them.
     async fn delete_bucket(&self, name: &str) -> Result<bool, ArcaError> {
         // Clean up tags associated with this bucket, then delete the bucket.
         let mut tx = self
@@ -1079,7 +1081,16 @@ impl MetadataStore for PgStore {
 
     async fn bucket_is_empty(&self, name: &str) -> Result<bool, ArcaError> {
         // EXISTS stops at the first row; COUNT(*) would read them all.
-        let row = sqlx_core::query::query("SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = $1)")
+        // Cluster delete tombstones do not count: they are not objects, and
+        // they stay until tombstone GC (the whole grace, longer while the
+        // liveness guard holds), so counting them kept an emptied cluster
+        // bucket from being deleted. DeleteBucket must leave them in place:
+        // they are what stops a returning node's stale live copy from being
+        // re-inserted by apply_remote_object, which would resurrect the object
+        // if the bucket is recreated. Delete markers are objects and count.
+        let row = sqlx_core::query::query(
+            "SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = $1 AND is_tombstone = FALSE)",
+        )
             .bind(name)
             .fetch_one(&self.pool)
             .await

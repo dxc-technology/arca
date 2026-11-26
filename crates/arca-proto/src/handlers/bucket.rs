@@ -1835,6 +1835,8 @@ pub async fn delete_bucket(
     }
 
     // Check bucket is empty.
+    // TECHDEBT(TD-059): in a cluster this is this node's view only; a peer
+    // may still hold an object this node missed.
     match state.metadata.bucket_is_empty(&bucket).await {
         Ok(true) => {}
         Ok(false) => {
