@@ -201,6 +201,51 @@ export function apiClient() {
       return await this.request('DELETE', '/admin' + path, opts);
     },
 
+    // Message from an S3 XML error body (<Message>), or 'HTTP <status>'.
+    async s3ErrorMessage(resp) {
+      try {
+        const doc = new DOMParser().parseFromString(await resp.text(), 'text/xml');
+        const msg = doc.querySelector('Message');
+        if (msg && msg.textContent) return msg.textContent;
+      } catch {}
+      return `HTTP ${resp.status}`;
+    },
+
+    // Message from an admin JSON error body, or 'HTTP <status>'.
+    async adminErrorMessage(resp) {
+      let body = {};
+      try { body = await resp.json(); } catch {}
+      return body.message || body.error || `HTTP ${resp.status}`;
+    },
+
+    // Run an admin request per id; returns {ok: [ids], failed: [{id, message}]}.
+    // request(id) must return the admin Response.
+    async adminEach(ids, request) {
+      const ok = [], failed = [];
+      for (const id of Array.from(ids)) {
+        try {
+          const resp = await request(id);
+          if (resp.ok) ok.push(id);
+          else failed.push({ id, message: await this.adminErrorMessage(resp) });
+        } catch (e) {
+          failed.push({ id, message: e.message });
+        }
+      }
+      return { ok, failed };
+    },
+
+    // Throw with the server message when an S3 response is not ok; return it otherwise.
+    async s3Check(resp) {
+      if (!resp.ok) throw new Error(await this.s3ErrorMessage(resp));
+      return resp;
+    },
+
+    // Throw with the server message when an admin response is not ok; return it otherwise.
+    async adminCheck(resp) {
+      if (!resp.ok) throw new Error(await this.adminErrorMessage(resp));
+      return resp;
+    },
+
     async adminArchive(bucket, keys) {
       return await this.request('POST', '/admin/archive', {
         body: JSON.stringify({ bucket, keys }),
@@ -287,14 +332,31 @@ export function apiClient() {
         contentType: 'application/xml',
         queryParams: { delete: '' },
       });
-      if (!resp.ok) throw new Error('Delete objects failed');
+      if (!resp.ok) throw new Error(await this.s3ErrorMessage(resp));
+      // DeleteObjects answers 200 even when single keys fail (Quiet mode lists only errors).
+      let failed = [];
+      try {
+        const doc = new DOMParser().parseFromString(await resp.text(), 'text/xml');
+        failed = Array.from(doc.getElementsByTagName('Error')).map(e => ({
+          key: e.querySelector('Key')?.textContent || '',
+          code: e.querySelector('Code')?.textContent || '',
+          message: e.querySelector('Message')?.textContent || '',
+        }));
+      } catch {}
+      if (failed.length > 0) {
+        const first = failed[0];
+        const detail = first.message || first.code || 'unknown error';
+        const err = new Error(`${failed.length} of ${keys.length} objects could not be deleted: ${detail}`);
+        err.failed = failed;
+        throw err;
+      }
       return resp;
     },
 
     // Multipart upload
     async s3CreateMultipartUpload(bucket, key) {
       const resp = await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), { queryParams: { uploads: '' } });
-      if (!resp.ok) throw new Error('Failed to create multipart upload');
+      if (!resp.ok) throw new Error(await this.s3ErrorMessage(resp));
       const xml = await resp.text();
       const doc = new DOMParser().parseFromString(xml, 'text/xml');
       return doc.querySelector('UploadId')?.textContent || '';
@@ -305,7 +367,7 @@ export function apiClient() {
         body: data,
         queryParams: { partNumber: String(partNumber), uploadId },
       });
-      if (!resp.ok) throw new Error(`Failed to upload part ${partNumber}`);
+      if (!resp.ok) throw new Error(`Part ${partNumber}: ` + await this.s3ErrorMessage(resp));
       return resp.headers.get('ETag');
     },
 
@@ -315,11 +377,23 @@ export function apiClient() {
         xml += `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${p.etag}</ETag></Part>`;
       }
       xml += '</CompleteMultipartUpload>';
-      return await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), {
+      const resp = await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), {
         body: xml,
         contentType: 'application/xml',
         queryParams: { uploadId },
       });
+      if (!resp.ok) throw new Error(await this.s3ErrorMessage(resp));
+      // Complete can answer 200 with an <Error> body.
+      const text = await resp.text();
+      const doc = new DOMParser().parseFromString(text, 'text/xml');
+      if (doc.documentElement && doc.documentElement.nodeName === 'Error') {
+        throw new Error(doc.querySelector('Message')?.textContent || doc.querySelector('Code')?.textContent || 'Complete multipart upload failed');
+      }
+      return resp;
+    },
+
+    async s3AbortMultipartUpload(bucket, key, uploadId) {
+      return await this.request('DELETE', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), { queryParams: { uploadId } });
     },
 
     // Bucket encryption

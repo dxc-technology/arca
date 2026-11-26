@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 
 export function usersView() {
   return {
@@ -325,54 +325,50 @@ export function userDetailView() {
       } catch { /* best-effort: keep the previous list */ }
     },
 
+    _reportMoveFailures(failed, label) {
+      if (failed.length === 0) return;
+      this.$dispatch('show-toast', {
+        message: `${label} failed for ${failed.length} item${failed.length === 1 ? '' : 's'}: ${failed[0].message}`,
+        type: 'error',
+      });
+    },
+
     async teamsMoveRight() {
       this.teamsMoving = true;
-      for (const tid of this.teamsSelLeft) {
-        try {
-          await api.adminPut('/teams/' + tid + '/members/' + this.userId);
-          this.teamsAssignedIds.push(tid);
-        } catch {}
-      }
-      this.teamsSelLeft = [];
+      const res = await api.adminEach(this.teamsSelLeft, id => api.adminPut('/teams/' + id + '/members/' + this.userId));
+      for (const id of res.ok) this.teamsAssignedIds.push(id);
+      this.teamsSelLeft = this.teamsSelLeft.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Join team');
       await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
     async teamsMoveLeft() {
       this.teamsMoving = true;
-      for (const tid of this.teamsSelRight) {
-        try {
-          await api.adminDelete('/teams/' + tid + '/members/' + this.userId);
-          this.teamsAssignedIds = this.teamsAssignedIds.filter(id => id !== tid);
-        } catch {}
-      }
-      this.teamsSelRight = [];
+      const res = await api.adminEach(this.teamsSelRight, id => api.adminDelete('/teams/' + id + '/members/' + this.userId));
+      this.teamsAssignedIds = this.teamsAssignedIds.filter(id => !res.ok.includes(id));
+      this.teamsSelRight = this.teamsSelRight.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Leave team');
       await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
     async teamsMoveAllRight() {
       this.teamsMoving = true;
-      for (const t of this.teamsAvailable) {
-        try {
-          await api.adminPut('/teams/' + t.team_id + '/members/' + this.userId);
-          this.teamsAssignedIds.push(t.team_id);
-        } catch {}
-      }
-      this.teamsSelLeft = [];
+      const res = await api.adminEach(this.teamsAvailable.map(x => x.team_id), id => api.adminPut('/teams/' + id + '/members/' + this.userId));
+      for (const id of res.ok) this.teamsAssignedIds.push(id);
+      this.teamsSelLeft = this.teamsSelLeft.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Join team');
       await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
     async teamsMoveAllLeft() {
       this.teamsMoving = true;
-      for (const t of this.teamsAssigned) {
-        try {
-          await api.adminDelete('/teams/' + t.team_id + '/members/' + this.userId);
-        } catch {}
-      }
-      this.teamsAssignedIds = [];
-      this.teamsSelRight = [];
+      const res = await api.adminEach(this.teamsAssigned.map(x => x.team_id), id => api.adminDelete('/teams/' + id + '/members/' + this.userId));
+      this.teamsAssignedIds = this.teamsAssignedIds.filter(id => !res.ok.includes(id));
+      this.teamsSelRight = this.teamsSelRight.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Leave team');
       await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
@@ -441,52 +437,40 @@ export function userDetailView() {
 
     async grantsMoveRight() {
       this.grantsMoving = true;
-      for (const gid of this.grantsSelLeft) {
-        try {
-          await api.adminPut('/users/' + this.userId + '/grants/' + gid);
-          this.grantsAssignedIds.push(gid);
-        } catch {}
-      }
-      this.grantsSelLeft = [];
+      const res = await api.adminEach(this.grantsSelLeft, id => api.adminPut('/users/' + this.userId + '/grants/' + id));
+      for (const id of res.ok) this.grantsAssignedIds.push(id);
+      this.grantsSelLeft = this.grantsSelLeft.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Add grant');
       await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 
     async grantsMoveLeft() {
       this.grantsMoving = true;
-      for (const gid of this.grantsSelRight) {
-        try {
-          await api.adminDelete('/users/' + this.userId + '/grants/' + gid);
-          this.grantsAssignedIds = this.grantsAssignedIds.filter(id => id !== gid);
-        } catch {}
-      }
-      this.grantsSelRight = [];
+      const res = await api.adminEach(this.grantsSelRight, id => api.adminDelete('/users/' + this.userId + '/grants/' + id));
+      this.grantsAssignedIds = this.grantsAssignedIds.filter(id => !res.ok.includes(id));
+      this.grantsSelRight = this.grantsSelRight.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Remove grant');
       await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 
     async grantsMoveAllRight() {
       this.grantsMoving = true;
-      for (const g of this.grantsAvailable) {
-        try {
-          await api.adminPut('/users/' + this.userId + '/grants/' + g.grant_id);
-          this.grantsAssignedIds.push(g.grant_id);
-        } catch {}
-      }
-      this.grantsSelLeft = [];
+      const res = await api.adminEach(this.grantsAvailable.map(x => x.grant_id), id => api.adminPut('/users/' + this.userId + '/grants/' + id));
+      for (const id of res.ok) this.grantsAssignedIds.push(id);
+      this.grantsSelLeft = this.grantsSelLeft.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Add grant');
       await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 
     async grantsMoveAllLeft() {
       this.grantsMoving = true;
-      for (const g of this.grantsAssigned) {
-        try {
-          await api.adminDelete('/users/' + this.userId + '/grants/' + g.grant_id);
-        } catch {}
-      }
-      this.grantsAssignedIds = [];
-      this.grantsSelRight = [];
+      const res = await api.adminEach(this.grantsAssigned.map(x => x.grant_id), id => api.adminDelete('/users/' + this.userId + '/grants/' + id));
+      this.grantsAssignedIds = this.grantsAssignedIds.filter(id => !res.ok.includes(id));
+      this.grantsSelRight = this.grantsSelRight.filter(id => !res.ok.includes(id));
+      this._reportMoveFailures(res.failed, 'Remove grant');
       await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },

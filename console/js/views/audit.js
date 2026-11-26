@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // Operations grouped by category

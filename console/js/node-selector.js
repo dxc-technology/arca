@@ -1,4 +1,4 @@
-import { api } from './api.js';
+import { api } from './api.js?v=write-errors-1';
 
 // ==================== CLUSTER NODE SELECTOR (decision H9) ======================
 // Shared mixin for the four node-local admin views (audit log, monitoring,

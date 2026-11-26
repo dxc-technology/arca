@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // ==================== NOTIFICATIONS VIEW ====================
@@ -521,6 +521,7 @@ export function bucketNotificationEditor() {
         properties,
       };
 
+      const snapshot = JSON.parse(JSON.stringify(this.configs));
       if (this.editingIndex >= 0) {
         cfg.enabled = this.configs[this.editingIndex].enabled;
         this.configs[this.editingIndex] = cfg;
@@ -529,37 +530,48 @@ export function bucketNotificationEditor() {
       }
 
       this.closeModal();
-      await this.saveNotifications(bucket);
+      if (!(await this.saveNotifications(bucket))) this.configs = snapshot;
     },
 
     async removeNotification(idx, bucket) {
+      const snapshot = JSON.parse(JSON.stringify(this.configs));
       this.configs.splice(idx, 1);
-      await this.saveNotifications(bucket);
+      if (!(await this.saveNotifications(bucket))) this.configs = snapshot;
     },
 
     async deleteAllNotifications(bucket) {
+      const snapshot = JSON.parse(JSON.stringify(this.configs));
       this.configs = [];
-      await this.saveNotifications(bucket);
+      if (!(await this.saveNotifications(bucket))) this.configs = snapshot;
     },
 
+    // Returns true when the server accepted the configuration.
     async saveNotifications(bucket) {
       this.saving = true; this.error = '';
+      let ok = true;
       try {
         const xml = this.buildNotificationXml();
         const resp = await api.s3PutBucketNotification(bucket, xml);
-        if (!resp.ok) { const text = await resp.text(); this.error = text || 'Failed to save notification configuration'; }
-      } catch (e) { this.error = e.message || 'Failed to save'; }
+        if (!resp.ok) {
+          const msg = await api.s3ErrorMessage(resp);
+          this.error = msg.startsWith('HTTP ') ? 'Failed to save notification configuration (' + msg + ')' : msg;
+          ok = false;
+        }
+      } catch (e) { this.error = e.message || 'Failed to save'; ok = false; }
       this.saving = false;
+      return ok;
     },
 
     async testConnector(url, connectorType, properties) {
       if (!url) return;
       try {
-        const data = await api.adminPost('/notifications/test-connector', {
+        const resp = await api.adminPost('/notifications/test-connector', {
           connector_type: connectorType || 'webhook',
           url,
           properties: properties || {},
         });
+        if (!resp.ok) throw new Error(await api.adminErrorMessage(resp));
+        const data = await resp.json();
         if (data.success) alert('Test successful (' + data.status + ')');
         else alert('Test failed: ' + (data.error || data.status));
       } catch (e) { alert('Test failed: ' + e.message); }

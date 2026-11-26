@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // ==================== REPLICATION — SHARED ====================
@@ -241,7 +241,11 @@ export function replicationView() {
       this.retrying = { ...this.retrying, [id]: true };
       try {
         const resp = await api.adminPost('/replication/retry/' + encodeURIComponent(id));
-        if (!resp.ok) throw new Error('retry failed: ' + resp.status);
+        if (!resp.ok) {
+          let body = {};
+          try { body = await resp.json(); } catch {}
+          throw new Error(body.message || body.error || `HTTP ${resp.status}`);
+        }
         await this.load();
       } catch (e) {
         this.$dispatch('show-toast', { message: 'Retry failed: ' + e.message, type: 'error' });
@@ -624,11 +628,12 @@ export function bucketReplicationEditor() {
           credentialRef: credRef,
           deleteMarkers: !!f.deleteMarkers,
         };
+        const snapshot = JSON.parse(JSON.stringify(this.rules));
         if (this.editingIndex >= 0) this.rules[this.editingIndex] = newRule;
         else this.rules.push(newRule);
 
-        await this.saveRules(bucket);
-        this.closeModal();
+        if (await this.saveRules(bucket)) this.closeModal();
+        else this.rules = snapshot;
       } catch (e) {
         this.error = e.message || 'Save failed';
       }
@@ -636,16 +641,28 @@ export function bucketReplicationEditor() {
     },
 
     async toggleEnabled(idx, bucket) {
-      this.rules[idx].status = this.rules[idx].status === 'Enabled' ? 'Disabled' : 'Enabled';
-      await this.saveRules(bucket);
+      const previous = this.rules[idx].status;
+      this.rules[idx].status = previous === 'Enabled' ? 'Disabled' : 'Enabled';
+      if (!(await this.saveRules(bucket))) this.rules[idx].status = previous;
     },
 
     async removeRule(idx, bucket) {
+      const snapshot = JSON.parse(JSON.stringify(this.rules));
       this.rules.splice(idx, 1);
       if (this.rules.length === 0) {
-        await api.s3DeleteBucketReplication(bucket);
-      } else {
-        await this.saveRules(bucket);
+        this.saving = true; this.error = '';
+        try {
+          const resp = await api.s3DeleteBucketReplication(bucket);
+          if (!resp.ok && resp.status !== 204 && resp.status !== 404) {
+            throw new Error(await extractS3Error(resp));
+          }
+        } catch (e) {
+          this.error = e.message || 'Delete failed';
+          this.rules = snapshot;
+        }
+        this.saving = false;
+      } else if (!(await this.saveRules(bucket))) {
+        this.rules = snapshot;
       }
     },
 
@@ -663,8 +680,10 @@ export function bucketReplicationEditor() {
       this.saving = false;
     },
 
+    // Returns true when the server accepted the configuration.
     async saveRules(bucket) {
       this.saving = true; this.error = '';
+      let ok = true;
       try {
         const xml = this.buildReplicationXml();
         const resp = await api.s3PutBucketReplication(bucket, xml);
@@ -673,8 +692,10 @@ export function bucketReplicationEditor() {
         }
       } catch (e) {
         this.error = e.message || 'Save failed';
+        ok = false;
       }
       this.saving = false;
+      return ok;
     },
 
     scrollToVersioning() {

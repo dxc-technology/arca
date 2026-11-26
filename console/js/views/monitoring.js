@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 import { formatBytes } from '../app.js';
 import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 

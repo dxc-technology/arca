@@ -1,4 +1,4 @@
-import { api } from '../api.js?v=deeplink-1';
+import { api } from '../api.js?v=write-errors-1';
 import { formatBytes, ringColors, icons } from '../app.js';
 
 // Squarified treemap algorithm
@@ -461,24 +461,31 @@ export function bucketDetailView() {
       const xml = `<?xml version="1.0" encoding="UTF-8"?><Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><TagSet>${tagSet}</TagSet></Tagging>`;
       try {
         const resp = await api.s3PutObjectTagging(this.bucketName, this.selectedObject.key, xml);
-        if (resp.ok) {
-          this.newTagKey = '';
-          this.newTagValue = '';
-          await this.loadObjectTags();
-        }
-      } catch {}
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
+        this.newTagKey = '';
+        this.newTagValue = '';
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Add tag failed: ' + e.message, type: 'error' });
+      }
+      await this.loadObjectTags();
       this.tagSaving = false;
     },
 
     async removeObjectTag(tagKey) {
       this.tagSaving = true;
       const tags = this.objectTags.filter(t => t.key !== tagKey);
-      if (tags.length === 0) {
-        try { await api.s3DeleteObjectTagging(this.bucketName, this.selectedObject.key); } catch {}
-      } else {
-        const tagSet = tags.map(t => `<Tag><Key>${t.key}</Key><Value>${t.value}</Value></Tag>`).join('');
-        const xml = `<?xml version="1.0" encoding="UTF-8"?><Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><TagSet>${tagSet}</TagSet></Tagging>`;
-        try { await api.s3PutObjectTagging(this.bucketName, this.selectedObject.key, xml); } catch {}
+      try {
+        let resp;
+        if (tags.length === 0) {
+          resp = await api.s3DeleteObjectTagging(this.bucketName, this.selectedObject.key);
+        } else {
+          const tagSet = tags.map(t => `<Tag><Key>${t.key}</Key><Value>${t.value}</Value></Tag>`).join('');
+          const xml = `<?xml version="1.0" encoding="UTF-8"?><Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><TagSet>${tagSet}</TagSet></Tagging>`;
+          resp = await api.s3PutObjectTagging(this.bucketName, this.selectedObject.key, xml);
+        }
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Remove tag failed: ' + e.message, type: 'error' });
       }
       await this.loadObjectTags();
       this.tagSaving = false;
@@ -640,7 +647,8 @@ export function bucketDetailView() {
             this.deleteProgress = `Deleted ${totalDeleted} objects...`;
           }
           // Delete the directory marker itself
-          await api.s3DeleteObject(bucket, this.deleteObjKey);
+          const markerResp = await api.s3DeleteObject(bucket, this.deleteObjKey);
+          if (!markerResp.ok) throw new Error(await this._extractS3Error(markerResp));
         } else {
           const resp = await api.s3DeleteObject(bucket, this.deleteObjKey);
           if (!resp.ok) throw new Error(await this._extractS3Error(resp));
@@ -692,7 +700,8 @@ export function bucketDetailView() {
           if (file.size > MULTIPART_THRESHOLD) {
             await this.multipartUpload(bucket, key, file);
           } else {
-            await api.s3PutObject(bucket, key, file);
+            const putResp = await api.s3PutObject(bucket, key, file);
+            if (!putResp.ok) throw new Error(await this._extractS3Error(putResp));
             this.uploadProgress = 100;
           }
         } catch (e) {
@@ -711,18 +720,24 @@ export function bucketDetailView() {
       const parts = [];
       const totalParts = Math.ceil(file.size / PART_SIZE);
 
-      for (let i = 0; i < totalParts; i++) {
-        const start = i * PART_SIZE;
-        const end = Math.min(start + PART_SIZE, file.size);
-        const chunk = file.slice(start, end);
-        const data = await chunk.arrayBuffer();
+      try {
+        for (let i = 0; i < totalParts; i++) {
+          const start = i * PART_SIZE;
+          const end = Math.min(start + PART_SIZE, file.size);
+          const chunk = file.slice(start, end);
+          const data = await chunk.arrayBuffer();
 
-        const etag = await api.s3UploadPart(bucket, key, uploadId, i + 1, data);
-        parts.push({ partNumber: i + 1, etag: etag });
-        this.uploadProgress = Math.round(((i + 1) / totalParts) * 100);
+          const etag = await api.s3UploadPart(bucket, key, uploadId, i + 1, data);
+          parts.push({ partNumber: i + 1, etag: etag });
+          this.uploadProgress = Math.round(((i + 1) / totalParts) * 100);
+        }
+
+        await api.s3CompleteMultipartUpload(bucket, key, uploadId, parts);
+      } catch (e) {
+        // Best effort: do not leave orphaned parts behind
+        try { await api.s3AbortMultipartUpload(bucket, key, uploadId); } catch {}
+        throw e;
       }
-
-      await api.s3CompleteMultipartUpload(bucket, key, uploadId, parts);
     },
 
     // Drag-and-drop handler that supports both files and directories.
@@ -814,6 +829,8 @@ export function bucketDetailView() {
         await this.load();
       } catch (e) {
         this.$dispatch('show-toast', { message: 'Delete failed: ' + e.message, type: 'error' });
+        // Some keys may have been deleted: refresh to show the server state
+        await this.load();
       }
       this.deleting = false;
     },
@@ -924,7 +941,7 @@ export function bucketDetailView() {
     async deletePresignedUrl(id) {
       try {
         const resp = await api.adminDelete('/presigned-urls/' + id);
-        if (!resp.ok) throw new Error('Failed');
+        if (!resp.ok) throw new Error(await api.adminErrorMessage(resp));
         this.presignedUrls = this.presignedUrls.filter(p => p.id !== id);
         const map = {};
         for (const pu of this.presignedUrls) {
@@ -936,6 +953,7 @@ export function bucketDetailView() {
         if (this.presignedDetailRecords.length === 0) this.showPresignedDetail = false;
       } catch (e) {
         console.error('Failed to delete presigned URL record:', e);
+        this.$dispatch('show-toast', { message: 'Delete presigned URL failed: ' + e.message, type: 'error' });
       }
     },
 

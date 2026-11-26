@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 import { icons } from '../app.js';
 
 // ==================== BUCKETS VIEW ====================

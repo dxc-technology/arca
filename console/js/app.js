@@ -2,20 +2,20 @@
  * Contains AI-generated code: see the NOTICE file at the repository root.
  * https://github.com/dxc-technology/arca/blob/main/NOTICE
  */
-import { api } from './api.js?v=live-topology-5';
+import { api } from './api.js?v=write-errors-1';
 import { topicFor } from './help.js';
 import { dashboardView } from './views/dashboard.js?v=live-topology-5';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
-import { bucketDetailView } from './views/bucket-detail.js?v=deeplink-1';
+import { bucketDetailView } from './views/bucket-detail.js?v=write-errors-1';
 import { credentialsView } from './views/credentials.js';
-import { usersView, userDetailView } from './views/users.js?v=eff-grants-refresh-1';
-import { teamsView, teamDetailView } from './views/teams.js';
+import { usersView, userDetailView } from './views/users.js?v=write-errors-1';
+import { teamsView, teamDetailView } from './views/teams.js?v=write-errors-1';
 import { grantsView, grantDetailView } from './views/grants.js?v=granular-actions-1';
 import { settingsView } from './views/settings.js';
 import { auditView } from './views/audit.js?v=node-views-2';
 import { monitoringView } from './views/monitoring.js?v=node-views-2';
-import { notificationsView, bucketNotificationEditor } from './views/notifications.js?v=node-views-2';
-import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=node-views-2';
+import { notificationsView, bucketNotificationEditor } from './views/notifications.js?v=write-errors-1';
+import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=write-errors-1';
 import { maintenanceView } from './views/maintenance.js?v=maint-fix-2';
 
 // ==================== SHARED SVG ICONS ====================

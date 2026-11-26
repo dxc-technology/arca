@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=write-errors-1';
 
 const TEMPLATE_FULL_ACCESS = JSON.stringify({
   Version: '2012-10-17',

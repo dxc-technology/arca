@@ -1,4 +1,4 @@
-import { api } from '../api.js?v=live-topology-5';
+import { api } from '../api.js?v=write-errors-1';
 import { formatBytes, formatUptime, ringColors, icons } from '../app.js';
 
 // ==================== DASHBOARD VIEW ====================
